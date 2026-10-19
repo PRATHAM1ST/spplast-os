@@ -1,0 +1,36 @@
+import { describe, expect, test } from 'vitest';
+import { bagsTotal, productiveHours, reconcile, saleTotal, scaleRecipe, weight } from '@/lib/domain/math';
+import { safeCSVCell } from '@/lib/domain/reports';
+import type { BagGroup, Ingredient } from '@/lib/domain/types';
+const bag=(count:number,weight:string,tare='0',mode:'net'|'gross'='net'):BagGroup=>({id:crypto.randomUUID(),label:'',count,weight,tare,mode});
+const ing=(name:string,amount:string,unit:'kg'|'g'|'%'='%',is_base=false):Ingredient=>({id:crypto.randomUUID(),name,amount,unit,is_base,category:'test',material_id:null});
+describe('bag arithmetic',()=>{
+ test('18 × 30 = 540',()=>expect(bagsTotal([bag(18,'30')])).toMatchObject({count:18,net:'540.000'}));
+ test('mixed grouped weights = 442.5',()=>expect(bagsTotal([bag(10,'30'),bag(5,'28.5')])).toMatchObject({count:15,net:'442.500'}));
+ test('gross less tare is multiplied per bag',()=>expect(bagsTotal([bag(18,'30.25','0.25','gross')]).net).toBe('540.000'));
+ test('individual weighed sums override presets',()=>expect(bagsTotal([bag(1,'29.875'),bag(1,'30.125'),bag(1,'28.5')]).net).toBe('88.500'));
+ test('decimal precision and tonnes',()=>expect(bagsTotal([bag(3,'0.1')])).toMatchObject({net:'0.300',tonnes:'0.000300'}));
+ test('tare cannot exceed gross',()=>expect(()=>bagsTotal([bag(1,'2','3','gross')])).toThrow());
+ test('negative quantity rejected',()=>expect(()=>bagsTotal([bag(1,'-1')])).toThrow());
+ test('fractional bag count rejected',()=>expect(()=>bagsTotal([bag(1.5,'30')])).toThrow());
+ test('zero bags rejected',()=>expect(()=>bagsTotal([bag(0,'30')])).toThrow());
+ test('duplicate serials rejected',()=>expect(()=>bagsTotal([{...bag(1,'30'),serial:'B1'},{...bag(1,'20'),serial:'B1'}])).toThrow('Duplicate'));
+ test('correction changes exact sum',()=>expect(bagsTotal([bag(10,'29.5'),bag(5,'28.5')]).net).toBe('437.500'));
+ test('half up rounding',()=>expect(weight('1.2345')).toBe('1.235'));
+});
+describe('recipes and reconciliation',()=>{
+ test('percentage scales total mixture',()=>expect(scaleRecipe([ing('a','99'),ing('b','1')],'total_percent','100','250').ingredients.map(i=>i.kg)).toEqual(['247.500000','2.500000']));
+ test('percentages must total 100',()=>expect(()=>scaleRecipe([ing('a','99')],'total_percent','100','250')).toThrow());
+ test('mixed g/kg in fixed formula',()=>expect(scaleRecipe([ing('a','99','kg'),ing('b','1000','g')],'fixed','100','250').total).toBe('250.000000'));
+ test('base resin target increases total mix',()=>expect(scaleRecipe([ing('a','100','kg',true),ing('b','2','kg')],'base_resin','100','250','base')).toMatchObject({base:'250.000000',total:'255.000000'}));
+ test('total target solves base mass',()=>expect(scaleRecipe([ing('a','100','kg',true),ing('b','2','kg')],'base_resin','100','255','total')).toMatchObject({base:'250.000000',total:'255.000000'}));
+ test('mixed convention disallowed',()=>expect(()=>scaleRecipe([ing('a','100','%')],'base_resin','100','250')).toThrow());
+ test('zero target rejected',()=>expect(()=>scaleRecipe([ing('a','100')],'total_percent','100','0')).toThrow());
+ test('zero denominator never produces NaN',()=>expect(reconcile('0','0','0','0')).toEqual({variance:'0.000',yield:null,kgHour:null}));
+ test('reconciliation includes rejects and documented loss',()=>expect(reconcile('600','570','20','10','4')).toEqual({variance:'0.000',yield:'95.00',kgHour:'142.500'}));
+ test('unexplained variance is preserved',()=>expect(reconcile('600','570','0','0').variance).toBe('30.000'));
+ test('cross-midnight actual running period',()=>expect(productiveHours('2026-10-19T20:00:00+05:30','2026-10-20T04:00:00+05:30',30).toString()).toBe('7.5'));
+ test('downtime cannot exceed elapsed period',()=>expect(()=>productiveHours('2026-10-19T20:00:00Z','2026-10-19T21:00:00Z',90)).toThrow());
+ test('tax explicitly selected and decimal safe',()=>expect(saleTotal('28.5','67.25','18','100','50')).toEqual({taxable:'1916.63',taxes:'345.00',total:'2311.62'}));
+ test('CSV export neutralizes formula injection',()=>expect(safeCSVCell('=HYPERLINK("bad")')).toBe('"\'=HYPERLINK(""bad"")"'));
+});

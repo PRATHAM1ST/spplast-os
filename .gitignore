@@ -1,0 +1,11 @@
+node_modules/
+.next/
+.env*
+!.env.example
+public/sw*
+public/swe-worker*
+coverage/
+test-results/
+playwright-report/
+*.tsbuildinfo
+.supabase/
