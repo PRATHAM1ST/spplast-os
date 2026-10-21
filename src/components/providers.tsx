@@ -16,7 +16,17 @@ import {
 } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
 import { toast, Toaster } from "sonner";
-import { local, unlock, lock, read, seal } from "@/lib/offline/vault";
+import {
+  local,
+  unlock,
+  lock,
+  read,
+  seal,
+  rememberToday,
+  restoreToday,
+  forgetUnlock,
+  endOfToday,
+} from "@/lib/offline/vault";
 import { fetchJSON, synchronize, RequestError } from "@/lib/offline/sync";
 import { authClient } from "@/lib/auth/client";
 import { authErrorMessage } from "@/lib/auth/errors";
@@ -131,8 +141,8 @@ function SessionGate({ children }: { children: ReactNode }) {
   const [signup, setSignup] = useState(false);
   const [otp, setOtp] = useState("");
   const qc = useQueryClient();
-  const enter = useCallback(async (s: Session, phrase: string) => {
-    await unlock(s.user_id, phrase);
+  const enter = useCallback(async (s: Session, phrase?: string) => {
+    if (phrase !== undefined) await unlock(s.user_id, phrase);
     const prior = await read<{ session: Session }>(`${s.user_id}:session`);
     if (
       prior &&
@@ -156,6 +166,7 @@ function SessionGate({ children }: { children: ReactNode }) {
       "synced",
     );
     localStorage.setItem("spplast-device-user", s.user_id);
+    if (!s.demo) await rememberToday();
     setSession(s);
   }, []);
   const check = useCallback(async () => {
@@ -185,6 +196,10 @@ function SessionGate({ children }: { children: ReactNode }) {
       setConfigured(result.configured);
       if (result.session) {
         setCandidate(result.session);
+        if (await restoreToday(result.session.user_id)) {
+          await enter(result.session);
+          return;
+        }
         setStage("unlock");
       } else setStage(result.needsOnboarding ? "onboarding" : "login");
     } catch (e) {
@@ -193,9 +208,19 @@ function SessionGate({ children }: { children: ReactNode }) {
         !(e instanceof RequestError) &&
         user &&
         (await local.rows.get(`${user}:session`))
-      )
+      ) {
+        if (await restoreToday(user)) {
+          const saved = await read<{ session: Session; expires: number }>(
+            `${user}:session`,
+          );
+          if (saved && saved.expires > Date.now()) {
+            setSession(saved.session);
+            return;
+          }
+          lock();
+        }
         setStage("unlock");
-      else {
+      } else {
         setConfigured(true);
         setStage("login");
       }
@@ -204,6 +229,27 @@ function SessionGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     void check();
   }, [check]);
+  useEffect(() => {
+    if (!session || session.demo) return;
+    const expires = endOfToday();
+    const expire = () => {
+      if (Date.now() < expires) return;
+      lock();
+      void forgetUnlock(session.user_id);
+      qc.clear();
+      setSession(null);
+      setCandidate(null);
+      setPassphrase("");
+      setStage("loading");
+      void check();
+    };
+    const timer = setTimeout(expire, expires - Date.now());
+    window.addEventListener("focus", expire);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("focus", expire);
+    };
+  }, [session, check, qc]);
   async function demo() {
     setBusy(true);
     setError("");
@@ -235,15 +281,17 @@ function SessionGate({ children }: { children: ReactNode }) {
       if (passphrase.length < 8)
         throw new Error("Use a device passphrase of at least 8 characters");
       await unlock(user, passphrase);
-      if (candidate) await enter(candidate, passphrase);
+      if (candidate) await enter(candidate);
       else {
         const saved = await read<{ session: Session; expires: number }>(
           `${user}:session`,
         );
         if (!saved || saved.expires < Date.now())
           throw new Error("Reconnect and sign in to renew offline access");
+        await rememberToday();
         setSession(saved.session);
       }
+      setPassphrase("");
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -266,6 +314,7 @@ function SessionGate({ children }: { children: ReactNode }) {
     )
       return;
     if (!session?.demo) await authClient.signOut();
+    await forgetUnlock(session!.user_id);
     lock();
     localStorage.removeItem("spplast-device-user");
     qc.clear();
@@ -321,7 +370,7 @@ function SessionGate({ children }: { children: ReactNode }) {
           {stage === "verify"
             ? `Enter the verification code sent to ${email}, or follow the verification link in your email.`
             : stage === "unlock"
-              ? "Enter your device passphrase to unlock local drafts. On a new device, choose a passphrase of at least 8 characters."
+              ? "Unlock once for today. This device stays unlocked until midnight or until you sign out. On a new device, choose at least 8 characters."
               : stage === "onboarding"
                 ? "Initialize the factory as the verified administrator, then configure your actual machines and shifts."
                 : configured

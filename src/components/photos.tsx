@@ -99,7 +99,6 @@ export function PhotoPicker({
           disabled={busy}
           type="file"
           accept="image/jpeg,image/png,image/webp"
-          capture="environment"
           multiple
           onChange={async (e) => {
             const selected = Array.from(e.target.files || []);
@@ -141,10 +140,7 @@ export function PhotoPicker({
           </div>
         ))}
       </div>
-      <small>
-        Photos stay queued until the private upload succeeds. Use consistent
-        lighting and a reference card for color review.
-      </small>
+      <small>Photos save with this entry and upload when connected.</small>
     </div>
   );
 }

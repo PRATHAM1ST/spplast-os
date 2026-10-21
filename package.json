@@ -58,6 +58,7 @@
     "dexie": "^4.4.6",
     "dexie-react-hooks": "^4.4.0",
     "exceljs": "^4.4.0",
+    "fast-average-color": "^9.6.0",
     "lucide-react": "^1.59.0",
     "next": "^16.4.2",
     "postgres": "^3.4.9",

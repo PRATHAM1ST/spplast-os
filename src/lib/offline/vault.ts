@@ -15,6 +15,7 @@ export interface LocalRow {
 class LocalDB extends Dexie {
   rows!: Table<LocalRow>;
   keys!: Table<{ user: string; salt: Uint8Array<ArrayBuffer> }>;
+  remembered!: Table<{ user: string; key: CryptoKey; expires: number }>;
   constructor() {
     super("spplast-local-v1");
     this.version(1).stores({
@@ -31,6 +32,11 @@ class LocalDB extends Dexie {
             row.order = row.updatedAt * 1000;
           }),
       );
+    this.version(3).stores({
+      rows: "id,user,kind,state,order,[user+kind]",
+      keys: "user",
+      remembered: "user",
+    });
   }
 }
 export const local = new LocalDB();
@@ -72,6 +78,44 @@ export async function unlock(user: string, passphrase: string) {
 export function lock() {
   vaultKey = null;
   vaultUser = "";
+}
+export function endOfToday(now = new Date()) {
+  return new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() + 1,
+  ).getTime();
+}
+// IndexedDB can store a non-exportable CryptoKey. Never store the passphrase.
+export async function rememberToday() {
+  if (!vaultKey || !vaultUser) throw new Error("Device is locked");
+  await local.remembered.put({
+    user: vaultUser,
+    key: vaultKey,
+    expires: endOfToday(),
+  });
+}
+export async function forgetUnlock(user: string) {
+  await local.remembered.delete(user);
+}
+export async function restoreToday(user: string) {
+  const saved = await local.remembered.get(user);
+  if (!saved) return false;
+  if (saved.expires <= Date.now() || saved.expires > endOfToday()) {
+    await forgetUnlock(user);
+    return false;
+  }
+  vaultKey = saved.key;
+  vaultUser = user;
+  try {
+    const session = await read(`${user}:session`);
+    if (!session) throw new Error("No saved session");
+    return true;
+  } catch {
+    lock();
+    await forgetUnlock(user);
+    return false;
+  }
 }
 export async function seal<T>(
   id: string,
@@ -132,6 +176,7 @@ export async function read<T>(id: string) {
 export async function purge(user: string) {
   await local.rows.where("user").equals(user).delete();
   await local.keys.delete(user);
+  await forgetUnlock(user);
   lock();
 }
 export async function fileData(file: Blob) {

@@ -1,11 +1,22 @@
 import "fake-indexeddb/auto";
 import { beforeEach, afterAll, expect, test, vi } from "vitest";
-import { local, unlock, seal, open, lock } from "@/lib/offline/vault";
+import {
+  local,
+  unlock,
+  seal,
+  open,
+  lock,
+  rememberToday,
+  restoreToday,
+  forgetUnlock,
+  endOfToday,
+} from "@/lib/offline/vault";
 import { synchronize, retryDelay } from "@/lib/offline/sync";
 beforeEach(async () => {
   lock();
   await local.rows.clear();
   await local.keys.clear();
+  await local.remembered.clear();
   vi.stubGlobal("navigator", { onLine: true });
   await unlock("worker", "correct-device-passphrase");
   await seal("worker:session", "session", { hello: "private" }, "synced");
@@ -28,6 +39,46 @@ test("wrong device passphrase fails", async () => {
   await expect(unlock("worker", "wrong-passphrase")).rejects.toThrow(
     "Incorrect",
   );
+});
+test("daily unlock survives a reload without storing an exportable key or passphrase", async () => {
+  await rememberToday();
+  const saved = await local.remembered.get("worker");
+  expect(saved?.key.extractable).toBe(false);
+  expect(saved?.expires).toBe(endOfToday());
+  expect(JSON.stringify(saved)).not.toContain("correct-device-passphrase");
+  lock();
+  expect(await restoreToday("worker")).toBe(true);
+  expect(await open((await local.rows.get("worker:session"))!)).toEqual({
+    hello: "private",
+  });
+});
+test("daily unlock cannot restore another user and expires at midnight", async () => {
+  await rememberToday();
+  lock();
+  expect(await restoreToday("another-worker")).toBe(false);
+  await local.remembered.update("worker", { expires: Date.now() - 1 });
+  expect(await restoreToday("worker")).toBe(false);
+  expect(await local.remembered.get("worker")).toBeUndefined();
+});
+test("explicit sign out removes today's remembered unlock", async () => {
+  await rememberToday();
+  await forgetUnlock("worker");
+  lock();
+  expect(await restoreToday("worker")).toBe(false);
+});
+test("corrupted remembered keys fall back to a passphrase without deleting drafts", async () => {
+  const draft = await seal("draft", "draft", { weight: "100" });
+  await rememberToday();
+  const wrongKey = await crypto.subtle.generateKey(
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"],
+  );
+  await local.remembered.update("worker", { key: wrongKey });
+  lock();
+  expect(await restoreToday("worker")).toBe(false);
+  await unlock("worker", "correct-device-passphrase");
+  expect(await open(draft)).toEqual({ weight: "100" });
 });
 test("offline capture remains local and retries with the same command ID exactly once", async () => {
   const id = crypto.randomUUID();

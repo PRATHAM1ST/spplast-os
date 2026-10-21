@@ -9,7 +9,14 @@ import { useWorkspace } from "./providers";
 import { Button } from "./ui/button";
 import { Field, Modal, Badge } from "./ui/common";
 import { BagEditor } from "./bags";
-import { PhotoPicker, queuePhotos } from "./photos";
+import { queuePhotos } from "./photos";
+import { ColorPicker } from "./color-picker";
+import {
+  colorDistance,
+  readColorReference,
+  writeColorReference,
+  type ColorReference,
+} from "@/lib/color";
 import { batchSchema } from "@/lib/domain/validation";
 import { bagsTotal, batchMath, sum, scaleRecipe, D } from "@/lib/domain/math";
 import {
@@ -55,10 +62,18 @@ export function GenericForm({
   } = useForm<Record<string, string>>({
     resolver: zodResolver(schema) as Resolver<Record<string, string>>,
     defaultValues: Object.fromEntries(
-      fields.map((f) => [f.key, String(initial[f.key] ?? f.default ?? "")]),
+      fields.map((f) => [
+        f.key,
+        String(
+          initial[f.key] ??
+            f.default ??
+            (f.required && f.options?.length === 1 ? f.options[0].value : ""),
+        ),
+      ]),
     ),
   });
   const [error, setError] = useState("");
+  const [showOptional, setShowOptional] = useState(false);
   return (
     <form
       onSubmit={handleSubmit(async (values) => {
@@ -71,35 +86,47 @@ export function GenericForm({
       })}
     >
       <div className="form-grid">
-        {fields.map((f) => (
-          <Field
-            key={f.key}
-            label={f.label}
-            hint={f.hint}
-            error={errors[f.key]?.message}
-          >
-            {f.options ? (
-              <select {...register(f.key)}>
-                <option value="">Select…</option>
-                {f.options.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            ) : f.type === "textarea" ? (
-              <textarea {...register(f.key)} />
-            ) : (
-              <input
-                {...register(f.key)}
-                type={f.type || "text"}
-                step={f.type === "number" ? "0.001" : undefined}
-                inputMode={f.type === "number" ? "decimal" : undefined}
-              />
-            )}
-          </Field>
-        ))}
+        {fields
+          .filter((f) => f.required || showOptional)
+          .map((f) => (
+            <Field
+              key={f.key}
+              label={f.label}
+              hint={f.hint}
+              error={errors[f.key]?.message}
+            >
+              {f.options ? (
+                <select {...register(f.key)}>
+                  <option value="">Select…</option>
+                  {f.options.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              ) : f.type === "textarea" ? (
+                <textarea {...register(f.key)} />
+              ) : (
+                <input
+                  {...register(f.key)}
+                  type={f.type || "text"}
+                  step={f.type === "number" ? "0.001" : undefined}
+                  inputMode={f.type === "number" ? "decimal" : undefined}
+                />
+              )}
+            </Field>
+          ))}
       </div>
+      {fields.some((f) => !f.required) && (
+        <button
+          type="button"
+          className="optional-toggle"
+          aria-expanded={showOptional}
+          onClick={() => setShowOptional(!showOptional)}
+        >
+          {showOptional ? "Hide optional details" : "Add optional details"}
+        </button>
+      )}
       {error && (
         <p className="error" role="alert">
           {error}
@@ -427,6 +454,9 @@ export function ProductionForm({
   const { data, session, execute, sync } = useWorkspace();
   const [advanced, setAdvanced] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
+  const [photoColor, setPhotoColor] = useState<ColorReference | null>(() =>
+    readColorReference(batch?.notes || ""),
+  );
   const [formError, setFormError] = useState("");
   const [draftReady, setDraftReady] = useState(false);
   const [id] = useState(() => (batch && !copy ? batch.id : uid()));
@@ -447,8 +477,22 @@ export function ProductionForm({
         : `${process === "grinding" ? "GRD" : "GRN"}-${today().replaceAll("-", "")}-${id.slice(0, 6)}`,
     date: today(),
     process,
-    machine_id: batch?.machine_id || "",
-    shift_id: batch?.shift_id || "",
+    machine_id:
+      batch?.machine_id ||
+      (data?.machines.filter(
+        (m) =>
+          m.category === (process === "grinding" ? "grinder" : "extruder") &&
+          m.status !== "inactive",
+      ).length === 1
+        ? data.machines.find(
+            (m) =>
+              m.category ===
+                (process === "grinding" ? "grinder" : "extruder") &&
+              m.status !== "inactive",
+          )!.id
+        : ""),
+    shift_id:
+      batch?.shift_id || (data?.shifts.length === 1 ? data.shifts[0].id : ""),
     operator: batch?.operator || session.email.split("@")[0],
     supervisor: batch?.supervisor || "",
     job_id: null,
@@ -488,10 +532,12 @@ export function ProductionForm({
         read<{ name: string; type: string; data: string }[]>(
           `${draftKey}:photos`,
         ),
+        read<ColorReference>(`${draftKey}:color`),
       ])
-        .then(([saved, photos]) => {
+        .then(([saved, photos, color]) => {
           if (!active) return;
           if (saved) reset(saved);
+          setPhotoColor(color);
           if (photos)
             setFiles(
               photos.map(
@@ -509,6 +555,12 @@ export function ProductionForm({
       active = false;
     };
   }, [draftKey, reset, batch]);
+  useEffect(() => {
+    if (draftReady)
+      void seal(`${draftKey}:color`, "draft", photoColor).catch((e: Error) =>
+        setFormError(e.message),
+      );
+  }, [photoColor, draftReady, draftKey]);
   useEffect(() => {
     if (!draftReady) return;
     const timer = setTimeout(() => {
@@ -585,11 +637,23 @@ export function ProductionForm({
             try {
               await execute(
                 "save_batch",
-                values,
+                {
+                  ...values,
+                  notes: writeColorReference(values.notes, photoColor),
+                },
                 batch && !copy ? batch.version : undefined,
               );
-              await queuePhotos(files, session, values.id, "batch");
+              await queuePhotos(
+                files,
+                session,
+                values.id,
+                "batch",
+                photoColor
+                  ? `Colour reference: ${photoColor.name} (${photoColor.hex})`
+                  : "",
+              );
               await seal(`${draftKey}:photos`, "draft", []);
+              await seal(`${draftKey}:color`, "draft", null);
               void sync();
               await seal(draftKey, "draft", {
                 ...initial,
@@ -601,7 +665,10 @@ export function ProductionForm({
               setFormError((e as Error).message);
             }
           },
-          () => setFormError("Check the required fields and quantities below."),
+          () => {
+            setAdvanced(true);
+            setFormError("Check the required fields and quantities below.");
+          },
         )}
       >
         <div className="row" style={{ marginBottom: 20 }}>
@@ -750,8 +817,11 @@ export function ProductionForm({
           ))}
         </section>
         {process === "granules" && can(session, "recipes") && (
-          <section className="form-section">
-            <h3>Color recipe</h3>
+          <details
+            className="form-section optional-details"
+            open={v.recipe_version_id ? true : undefined}
+          >
+            <summary>Use a colour recipe (optional)</summary>
             <Field label="Approved recipe version">
               <select
                 value={v.recipe_version_id || ""}
@@ -837,8 +907,20 @@ export function ProductionForm({
               above. Recipe weights document the actual mix; they do not create
               a second stock movement.
             </p>
-          </section>
+          </details>
         )}
+        <details
+          className="optional-details"
+          open={files.length || photoColor ? true : undefined}
+        >
+          <summary>Add photo & identify colour</summary>
+          <ColorPicker
+            files={files}
+            onFilesChange={setFiles}
+            value={photoColor}
+            onChange={setPhotoColor}
+          />
+        </details>
         <section className="form-section">
           <div className="row">
             <h3>02 · Weighed output</h3>
@@ -880,6 +962,44 @@ export function ProductionForm({
                     ))}
                   </select>
                 </Field>
+                {photoColor && (
+                  <div className="field color-material-matches">
+                    <span>Similar colours in your materials</span>
+                    <small>Choose the correct polymer and grade.</small>
+                    <div className="color-choices">
+                      {data.materials
+                        .filter(
+                          (m) =>
+                            m.active &&
+                            m.form ===
+                              (process === "grinding"
+                                ? "grinding_flakes"
+                                : "granules"),
+                        )
+                        .sort(
+                          (a, b) =>
+                            colorDistance(photoColor.hex, a.color_hex) -
+                            colorDistance(photoColor.hex, b.color_hex),
+                        )
+                        .slice(0, 3)
+                        .map((m) => (
+                          <button
+                            type="button"
+                            key={m.id}
+                            className="color-choice"
+                            aria-pressed={output.material_id === m.id}
+                            onClick={() => setOutput(i, { material_id: m.id })}
+                          >
+                            <span
+                              className="color-chip"
+                              style={{ background: m.color_hex }}
+                            />
+                            {m.name} · {m.polymer}
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+                )}
                 <Field label="Storage location">
                   <select
                     value={output.location_id}
@@ -895,18 +1015,20 @@ export function ProductionForm({
                     ))}
                   </select>
                 </Field>
-                <Field label="Output category">
-                  <select
-                    value={output.kind}
-                    onChange={(e) =>
-                      setOutput(i, { kind: e.target.value as Output["kind"] })
-                    }
-                  >
-                    <option value="usable">Usable output</option>
-                    <option value="scrap">Recoverable scrap</option>
-                    <option value="rework">Rework</option>
-                  </select>
-                </Field>
+                {advanced && (
+                  <Field label="Output category">
+                    <select
+                      value={output.kind}
+                      onChange={(e) =>
+                        setOutput(i, { kind: e.target.value as Output["kind"] })
+                      }
+                    >
+                      <option value="usable">Usable output</option>
+                      <option value="scrap">Recoverable scrap</option>
+                      <option value="rework">Rework</option>
+                    </select>
+                  </Field>
+                )}
                 <Field
                   label="Verified net output (kg)"
                   hint={
@@ -925,42 +1047,48 @@ export function ProductionForm({
                   />
                 </Field>
               </div>
-              <div className="row" style={{ margin: "14px 0" }}>
-                <h3 className="small">Bag weights</h3>
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={async () => {
-                    const saved = await read<{ groups: BagGroup[] }>(
-                      `${session.user_id}:calculator`,
-                    );
-                    if (saved)
+              <details
+                className="optional-details"
+                open={output.bags.length ? true : undefined}
+              >
+                <summary>Count bags instead of entering total weight</summary>
+                <div className="row" style={{ margin: "14px 0" }}>
+                  <h3 className="small">Bag weights</h3>
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={async () => {
+                      const saved = await read<{ groups: BagGroup[] }>(
+                        `${session.user_id}:calculator`,
+                      );
+                      if (saved)
+                        setOutput(i, {
+                          bags: saved.groups.map((g) => ({ ...g, id: uid() })),
+                          quantity: bagsTotal(saved.groups).net,
+                        });
+                      else toast.info("Save a calculator draft first");
+                    }}
+                  >
+                    Load bag draft
+                  </button>
+                </div>
+                <BagEditor
+                  compact
+                  groups={output.bags}
+                  onChange={(groups) => {
+                    try {
                       setOutput(i, {
-                        bags: saved.groups.map((g) => ({ ...g, id: uid() })),
-                        quantity: bagsTotal(saved.groups).net,
+                        bags: groups,
+                        quantity: bagsTotal(groups).net,
                       });
-                    else toast.info("Save a calculator draft first");
+                      setFormError("");
+                    } catch (e) {
+                      setOutput(i, { bags: groups });
+                      setFormError((e as Error).message);
+                    }
                   }}
-                >
-                  Load bag draft
-                </button>
-              </div>
-              <BagEditor
-                compact
-                groups={output.bags}
-                onChange={(groups) => {
-                  try {
-                    setOutput(i, {
-                      bags: groups,
-                      quantity: bagsTotal(groups).net,
-                    });
-                    setFormError("");
-                  } catch (e) {
-                    setOutput(i, { bags: groups });
-                    setFormError((e as Error).message);
-                  }
-                }}
-              />
+                />
+              </details>
               {v.outputs.length > 1 && (
                 <Button
                   type="button"
@@ -1092,7 +1220,6 @@ export function ProductionForm({
             )}
           </section>
         )}
-        <PhotoPicker files={files} onChange={setFiles} />
         {formError && (
           <p className="error" role="alert">
             {formError}

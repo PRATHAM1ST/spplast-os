@@ -1,5 +1,27 @@
 @import "tailwindcss";
 
+.optional-details { margin: 16px 0; border-top: 1px solid var(--line); padding-top: 12px; }
+.optional-details > summary, .optional-toggle { cursor: pointer; min-height: 44px; padding: 10px 0; font-weight: 600; color: var(--green); }
+.optional-toggle { background: none; border: 0; }
+.color-assistant { padding: 16px 0; }
+.color-assistant > p { margin: 8px 0 12px; max-width: 65ch; }
+.color-assistant .capture-box { margin: 12px 0; padding: 12px; }
+.color-choices { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.color-choice { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 12px; background: white; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; text-align: left; }
+.color-choice[aria-pressed="true"] { border-color: var(--green); box-shadow: inset 0 0 0 1px var(--green); background: #eef4e8; }
+.color-choice:focus-visible, .optional-details > summary:focus-visible, .optional-toggle:focus-visible { outline: 3px solid #49705a; outline-offset: 3px; }
+.color-chip { display: inline-block; width: 24px; height: 24px; border-radius: 50%; border: 1px solid #0002; flex-shrink: 0; }
+.selected-color { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--ink); }
+.selected-color > span:last-child { color: var(--muted); font-size: 12px; }
+.photo-color-sample { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.photo-color-sample canvas { max-width: 160px; max-height: 160px; width: auto; height: auto; border-radius: 8px; cursor: crosshair; }
+.color-material-matches { grid-column: 1 / -1; }
+.production-identification.quick-mode > .field:nth-child(1),
+.production-identification.quick-mode > .field:nth-child(4),
+.production-identification.quick-mode > .field:nth-child(5),
+.production-identification.quick-mode > .field:nth-child(6) { display: none; }
+@media (max-width: 600px) { .color-choice { flex: 1 0 calc(33% - 8px); padding: 8px; font-size: 12px; } }
+
 .install-action { position: fixed; right: 28px; bottom: 22px; z-index: 30; background: #f3f4ef; border-radius: 12px; }
 @media(max-width: 768px) { .install-action { bottom: 86px; right: 16px; } .btn-sm { min-height: 44px !important; } }
 @media print { .install-action { display: none; } }

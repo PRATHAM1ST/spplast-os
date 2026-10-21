@@ -21,6 +21,8 @@ import {
 } from "@/lib/domain/types";
 import { scaleRecipe } from "@/lib/domain/math";
 import { kg, uid, dateLabel } from "@/lib/utils";
+import { ColorPicker } from "./color-picker";
+import { queuePhotos } from "./photos";
 const basisLabels: Record<Basis, string> = {
   total_percent: "% of total final mixture",
   per_100: "Quantity per 100 kg total mix",
@@ -35,14 +37,18 @@ export function RecipeForm({
   onClose: () => void;
   source?: Recipe;
 }) {
-  const { data, execute } = useWorkspace();
+  const { data, session, execute, sync } = useWorkspace();
+  const [files, setFiles] = useState<File[]>([]);
+  const [recipeId] = useState(uid);
+  const [masterId] = useState(() => source?.master_id || uid());
+  const [saved, setSaved] = useState(false);
   const [name, setName] = useState(source?.name || "");
   const [polymer, setPolymer] = useState(source?.polymer || "PP");
-  const [color, setColor] = useState(source?.color || "");
-  const [hex, setHex] = useState(source?.color_hex || "#56745b");
+  const [color, setColor] = useState(source?.color || "Natural");
+  const [hex, setHex] = useState(source?.color_hex || "#ded8bd");
   const [basis, setBasis] = useState<Basis>(source?.basis || "total_percent");
   const [base, setBase] = useState(source?.base_quantity || "100");
-  const [reason, setReason] = useState("");
+  const [reason, setReason] = useState(source ? "" : "Initial recipe");
   const [notes, setNotes] = useState(source?.notes || "");
   const [ingredients, setIngredients] = useState<Ingredient[]>(
     source?.ingredients.map((i) => ({ ...i, id: uid() })) || [],
@@ -65,20 +71,32 @@ export function RecipeForm({
           setBusy(true);
           setError("");
           try {
-            scaleRecipe(ingredients, basis, base, "100");
-            await execute("save_recipe", {
-              id: uid(),
-              master_id: source?.master_id || uid(),
-              name,
-              color,
-              color_hex: hex,
-              polymer,
-              basis,
-              base_quantity: base,
-              ingredients,
-              change_reason: reason,
-              notes,
-            });
+            if (!saved) {
+              scaleRecipe(ingredients, basis, base, "100");
+              await execute("save_recipe", {
+                id: recipeId,
+                master_id: masterId,
+                name: name.trim() || `${color || "Natural"} ${polymer}`,
+                color,
+                color_hex: hex,
+                polymer,
+                basis,
+                base_quantity: base,
+                ingredients,
+                change_reason: reason,
+                notes,
+              });
+              setSaved(true);
+            }
+            await queuePhotos(
+              files,
+              session,
+              recipeId,
+              "recipe",
+              `Colour reference: ${color} (${hex})`,
+              "color_sample",
+            );
+            void sync();
             onClose();
           } catch (e) {
             setError((e as Error).message);
@@ -87,192 +105,230 @@ export function RecipeForm({
           }
         }}
       >
-        <div className="form-grid">
-          <Field label="Recipe name">
-            <input
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </Field>
-          <Field label="Polymer family">
-            <input
-              required
-              value={polymer}
-              onChange={(e) => setPolymer(e.target.value)}
-            />
-          </Field>
-          <Field label="Color name">
-            <input
-              required
-              value={color}
-              onChange={(e) => setColor(e.target.value)}
-            />
-          </Field>
-          <Field label="Digital reference (not calibrated)">
-            <input
-              type="color"
-              value={hex}
-              onChange={(e) => setHex(e.target.value)}
-            />
-          </Field>
-          <Field label="Formula basis">
-            <select
-              value={basis}
-              onChange={(e) => setBasis(e.target.value as Basis)}
-            >
-              {Object.entries(basisLabels).map(([v, l]) => (
-                <option key={v} value={v}>
-                  {l}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Defined base / reference quantity (kg)">
-            <input
-              type="number"
-              required
-              step="0.001"
-              min="0.001"
-              value={base}
-              onChange={(e) => setBase(e.target.value)}
-            />
-          </Field>
-        </div>
-        <div className="form-section">
-          <div className="row">
-            <h3>Ingredients, in order</h3>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() =>
-                setIngredients([
-                  ...ingredients,
-                  {
-                    id: uid(),
-                    name: "",
-                    material_id: null,
-                    category: "base_resin",
-                    amount: "0",
-                    unit: basis === "total_percent" ? "%" : "kg",
-                    is_base: !ingredients.length,
-                  },
-                ])
-              }
-            >
-              <Plus size={15} />
-              Ingredient
-            </Button>
+        <fieldset
+          disabled={busy || saved}
+          style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
+        >
+          <div className="form-grid">
+            <Field label="Recipe name (optional)">
+              <input
+                placeholder={`${color || "Natural"} ${polymer}`}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </Field>
+            <Field label="Polymer family">
+              <select
+                value={polymer}
+                onChange={(e) => setPolymer(e.target.value)}
+              >
+                {[
+                  ...new Set([
+                    polymer,
+                    "PP",
+                    "CP",
+                    "HDPE",
+                    "LDPE",
+                    "ABS",
+                    "PC",
+                    "HI",
+                    "PS",
+                    "Other",
+                  ]),
+                ].map((p) => (
+                  <option key={p}>{p}</option>
+                ))}
+              </select>
+            </Field>
           </div>
-          {ingredients.map((ing, i) => {
-            const change = (patch: Partial<Ingredient>) =>
-              setIngredients(
-                ingredients.map((x, j) => (j === i ? { ...x, ...patch } : x)),
+          <ColorPicker
+            files={files}
+            onFilesChange={setFiles}
+            value={{ name: color || "Green", hex }}
+            onChange={(c) => {
+              setColor(c.name);
+              setHex(c.hex);
+            }}
+          />
+          <details className="optional-details">
+            <summary>Formula settings · {basisLabels[basis]}</summary>
+            <div className="form-grid">
+              <Field label="Formula basis">
+                <select
+                  value={basis}
+                  onChange={(e) => setBasis(e.target.value as Basis)}
+                >
+                  {Object.entries(basisLabels).map(([v, l]) => (
+                    <option key={v} value={v}>
+                      {l}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Defined base / reference quantity (kg)">
+                <input
+                  type="number"
+                  required
+                  step="0.001"
+                  min="0.001"
+                  value={base}
+                  onChange={(e) => setBase(e.target.value)}
+                />
+              </Field>
+            </div>
+          </details>
+          <div className="form-section">
+            <div className="row">
+              <h3>Ingredients, in order</h3>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  setIngredients([
+                    ...ingredients,
+                    {
+                      id: uid(),
+                      name: "",
+                      material_id: null,
+                      category: "base_resin",
+                      amount: "0",
+                      unit: basis === "total_percent" ? "%" : "kg",
+                      is_base: !ingredients.length,
+                    },
+                  ])
+                }
+              >
+                <Plus size={15} />
+                Ingredient
+              </Button>
+            </div>
+            {ingredients.map((ing, i) => {
+              const change = (patch: Partial<Ingredient>) =>
+                setIngredients(
+                  ingredients.map((x, j) => (j === i ? { ...x, ...patch } : x)),
+                );
+              return (
+                <div className="bag-row" key={ing.id} style={{ marginTop: 14 }}>
+                  <div className="row">
+                    <strong className="small">Ingredient {i + 1}</strong>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      aria-label="Remove ingredient"
+                      onClick={() =>
+                        setIngredients(ingredients.filter((_, j) => i !== j))
+                      }
+                    >
+                      <Trash2 size={14} />
+                    </Button>
+                  </div>
+                  <div className="form-grid">
+                    <Field label="Ingredient name">
+                      <input
+                        required
+                        value={ing.name}
+                        onChange={(e) => change({ name: e.target.value })}
+                      />
+                    </Field>
+                    <Field label="Inventory material">
+                      <select
+                        value={ing.material_id || ""}
+                        onChange={(e) => {
+                          const material = data?.materials.find(
+                            (m) => m.id === e.target.value,
+                          );
+                          change({
+                            material_id: e.target.value || null,
+                            ...(material ? { name: material.name } : {}),
+                          });
+                        }}
+                      >
+                        <option value="">No reference</option>
+                        {data?.materials.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Amount">
+                      <input
+                        type="number"
+                        step="0.000001"
+                        min="0.000001"
+                        required
+                        value={ing.amount}
+                        onChange={(e) => change({ amount: e.target.value })}
+                      />
+                    </Field>
+                    <Field label="Units">
+                      <select
+                        value={ing.unit}
+                        onChange={(e) =>
+                          change({ unit: e.target.value as Ingredient["unit"] })
+                        }
+                      >
+                        <option value="%">% of total</option>
+                        <option value="kg">kg</option>
+                        <option value="g">g</option>
+                      </select>
+                    </Field>
+                    <Field label="Category">
+                      <input
+                        value={ing.category}
+                        onChange={(e) => change({ category: e.target.value })}
+                      />
+                    </Field>
+                    <label
+                      className="row small"
+                      style={{ justifyContent: "flex-start" }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={ing.is_base}
+                        onChange={(e) => change({ is_base: e.target.checked })}
+                      />
+                      Base resin ingredient
+                    </label>
+                  </div>
+                </div>
               );
-            return (
-              <div className="bag-row" key={ing.id} style={{ marginTop: 14 }}>
-                <div className="row">
-                  <strong className="small">Ingredient {i + 1}</strong>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    aria-label="Remove ingredient"
-                    onClick={() =>
-                      setIngredients(ingredients.filter((_, j) => i !== j))
-                    }
-                  >
-                    <Trash2 size={14} />
-                  </Button>
-                </div>
-                <div className="form-grid">
-                  <Field label="Ingredient name">
-                    <input
-                      required
-                      value={ing.name}
-                      onChange={(e) => change({ name: e.target.value })}
-                    />
-                  </Field>
-                  <Field label="Inventory material">
-                    <select
-                      value={ing.material_id || ""}
-                      onChange={(e) =>
-                        change({ material_id: e.target.value || null })
-                      }
-                    >
-                      <option value="">No reference</option>
-                      {data?.materials.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.name}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Amount">
-                    <input
-                      type="number"
-                      step="0.000001"
-                      min="0.000001"
-                      required
-                      value={ing.amount}
-                      onChange={(e) => change({ amount: e.target.value })}
-                    />
-                  </Field>
-                  <Field label="Units">
-                    <select
-                      value={ing.unit}
-                      onChange={(e) =>
-                        change({ unit: e.target.value as Ingredient["unit"] })
-                      }
-                    >
-                      <option value="%">% of total</option>
-                      <option value="kg">kg</option>
-                      <option value="g">g</option>
-                    </select>
-                  </Field>
-                  <Field label="Category">
-                    <input
-                      value={ing.category}
-                      onChange={(e) => change({ category: e.target.value })}
-                    />
-                  </Field>
-                  <label
-                    className="row small"
-                    style={{ justifyContent: "flex-start" }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={ing.is_base}
-                      onChange={(e) => change({ is_base: e.target.checked })}
-                    />
-                    Base resin ingredient
-                  </label>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        <div className="form-grid">
-          <Field label="Why this version exists">
-            <textarea
-              required
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-            />
-          </Field>
-          <Field label="Processing guidance / notes">
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-          </Field>
-        </div>
-        {error && <p className="error">{error}</p>}
+            })}
+          </div>
+          <details
+            className="optional-details"
+            open={source ? true : undefined}
+          >
+            <summary>Version notes</summary>
+            <div className="form-grid">
+              <Field label="Why this version exists">
+                <textarea
+                  required
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                />
+              </Field>
+              <Field label="Processing guidance / notes">
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                />
+              </Field>
+            </div>
+          </details>
+        </fieldset>
+        {error && (
+          <p className="error" role="alert">
+            {saved ? "Recipe saved. Retry to attach your photos. " : ""}
+            {error}
+          </p>
+        )}
         <div className="form-actions">
           <Button disabled={busy}>
             <Beaker size={16} />
-            Save experimental version
+            {saved ? "Retry attaching photos" : "Save experimental version"}
           </Button>
         </div>
       </form>
