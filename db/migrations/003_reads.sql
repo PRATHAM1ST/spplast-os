@@ -15,6 +15,7 @@ begin
  result:=result||jsonb_build_object('lots',rows);
  select coalesce(jsonb_agg(to_jsonb(b)||jsonb_build_object(
   'loss_kg',b.loss_kg::text,
+  'target_input_kg',b.target_input_kg::text,
   'inputs',(select coalesce(jsonb_agg(to_jsonb(i)||jsonb_build_object('quantity',i.quantity::text)),'[]') from app.batch_inputs i where batch_id=b.id),
   'outputs',(select coalesce(jsonb_agg(to_jsonb(x)||jsonb_build_object('quantity',x.quantity::text,'bags',(select coalesce(jsonb_agg(to_jsonb(g)||jsonb_build_object('weight',g.weight::text,'tare',g.tare::text)),'[]') from app.bag_groups g where output_id=x.id))),'[]') from app.batch_outputs x where batch_id=b.id),
   'readings',(select coalesce(jsonb_agg(to_jsonb(m)),'[]') from app.machine_readings m where batch_id=b.id),

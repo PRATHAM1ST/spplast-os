@@ -92,6 +92,11 @@ begin
   select sum(quantity) into total_in from app.batch_inputs where org_id=o and batch_id=rid;
   select sum(quantity) into total_out from app.batch_outputs where org_id=o and batch_id=rid;
   if total_in is null or total_out is null or total_in<>total_out+b.loss_kg then raise exception 'Mass does not reconcile: input %, output %, documented loss %',total_in,total_out,b.loss_kg; end if;
+  if b.recipe_version_id is not null then
+   select sum(quantity) into qty from app.batch_recipe_actuals where org_id=o and batch_id=rid;
+   if qty is null or qty<>total_in then raise exception 'Recipe actual weights must reconcile to consumed input'; end if;
+   if exists(select 1 from app.recipe_ingredients i where i.org_id=o and i.recipe_id=b.recipe_version_id and not exists(select 1 from app.batch_recipe_actuals a where a.org_id=o and a.batch_id=rid and a.ingredient_id=i.id)) then raise exception 'Record every recipe ingredient actual weight'; end if;
+  end if;
   for rec in select * from app.batch_outputs where org_id=o and batch_id=rid loop
    select sum(count*(weight-case when mode='gross' then tare else 0 end)) into bag_weight from app.bag_groups where org_id=o and output_id=rec.id;
    if bag_weight is not null and bag_weight<>rec.quantity then raise exception 'Bag weights do not equal output weight'; end if;
@@ -137,7 +142,8 @@ begin
   end loop;
   if p ? 'rate' then
    if not private.allowed(o,'finance') then raise exception 'FORBIDDEN: financial access required'; end if;
-   qty:=round(total_in*(p->>'rate')::numeric*(1+(p->>'tax_percent')::numeric/100)+(p->>'transport')::numeric-(p->>'discount')::numeric,2);
+   qty:=round(total_in*(p->>'rate')::numeric,2);
+   qty:=qty+round(qty*(p->>'tax_percent')::numeric/100,2)+round((p->>'transport')::numeric,2)-round((p->>'discount')::numeric,2);
    perform private.put('dispatch_finances',o,jsonb_build_object('dispatch_id',rid,'rate',p->>'rate','tax_percent',p->>'tax_percent','transport',p->>'transport','discount',p->>'discount','total',qty,'supply_location',p->>'supply_location','tax_effective_date',p->>'tax_effective_date'));
   end if;
  elsif action='save_job' then
@@ -196,6 +202,7 @@ begin
   perform private.move(o,tx,(p->>'lot_id')::uuid,qty);
   update app.lots set qc='hold',version=version+1 where org_id=o and id=(p->>'lot_id')::uuid;
  elsif action='media' then
+  if exists(select 1 from app.media where id=rid) then raise exception 'CONFLICT: Saved photos are immutable'; end if;
   if p->>'record_type'='recipe' and not private.allowed(o,'recipes') then raise exception 'FORBIDDEN'; end if;
   perm:=case p->>'record_type' when 'lot' then 'lots' when 'batch' then 'batches' when 'recipe' then 'recipes' when 'job' then 'jobs' when 'dispatch' then 'dispatches' when 'inspection' then 'inspections' when 'machine' then 'machines' end;
   if perm is null then raise exception 'Invalid attachment type'; end if;

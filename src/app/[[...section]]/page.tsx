@@ -1,2 +1,4 @@
-import { FactoryApp } from '@/components/factory-app';
-export default function Page() { return <FactoryApp/>; }
+import { FactoryApp } from "@/components/factory-app";
+export default function Page() {
+  return <FactoryApp />;
+}

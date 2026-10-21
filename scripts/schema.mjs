@@ -1,5 +1,5 @@
 // Generate consistent tenant keys. Commit output; use new migrations after deployment.
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from "node:fs";
 const definitions = {
   factory_sites: `name text not null, address text not null default ''`,
   parties: `name text not null, kind text not null default 'both', phone text not null default '', gstin text not null default '', address text not null default ''`,
@@ -64,13 +64,31 @@ create trigger recipe_immutable before update or delete on app.recipes for each 
 create trigger ingredients_immutable before update or delete on app.recipe_ingredients for each row execute function private.recipe_guard();
 create function private.balance(o uuid,l uuid) returns numeric language sql stable set search_path='' as $$ select coalesce(sum(quantity),0) from app.movements where org_id=o and lot_id=l $$;
 `;
-for (const table of ['organizations','memberships', ...Object.keys(definitions),'settings','locked_days','idempotency_records']) {
-  const col = table==='organizations'?'id':'org_id';
+for (const table of [
+  "organizations",
+  "memberships",
+  ...Object.keys(definitions),
+  "settings",
+  "locked_days",
+  "idempotency_records",
+]) {
+  const col = table === "organizations" ? "id" : "org_id";
   let policy = `private.member(${col})`;
-  if (['recipes','recipe_ingredients','recipe_masters','batch_recipe_actuals'].includes(table)) policy = `private.allowed(org_id,'recipes')`;
-  if (['job_charges','dispatch_finances'].includes(table)) policy = `private.allowed(org_id,'finance')`;
-  if (['audit','memberships','idempotency_records'].includes(table)) policy += ` and (private.allowed(org_id,'configure') or ${table==='memberships'?'user_id':table==='idempotency_records'?'actor':'created_by'}=private.actor())`;
-  if (table==='media') policy += ` and (record_type<>'recipe' or private.allowed(org_id,'recipes'))`;
+  if (
+    [
+      "recipes",
+      "recipe_ingredients",
+      "recipe_masters",
+      "batch_recipe_actuals",
+    ].includes(table)
+  )
+    policy = `private.allowed(org_id,'recipes')`;
+  if (["job_charges", "dispatch_finances"].includes(table))
+    policy = `private.allowed(org_id,'finance')`;
+  if (["audit", "memberships", "idempotency_records"].includes(table))
+    policy += ` and (private.allowed(org_id,'configure') or ${table === "memberships" ? "user_id" : table === "idempotency_records" ? "actor" : "created_by"}=private.actor())`;
+  if (table === "media")
+    policy += ` and (record_type<>'recipe' or private.allowed(org_id,'recipes'))`;
   sql += `alter table app.${table} enable row level security;\ncreate policy tenant_read on app.${table} for select using (${policy});\n`;
 }
 sql += `
@@ -80,4 +98,5 @@ grant select on all tables in schema app to spplast_app;
 revoke all on all functions in schema private from public;
 grant execute on function private.actor(),private.member(uuid),private.allowed(uuid,text),private.balance(uuid,uuid) to spplast_app;
 `;
-mkdirSync('db/migrations',{recursive:true});writeFileSync('db/migrations/001_schema.sql',sql);
+mkdirSync("db/migrations", { recursive: true });
+writeFileSync("db/migrations/001_schema.sql", sql);

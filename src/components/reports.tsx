@@ -1,15 +1,213 @@
-'use client';
-import { useState } from 'react';
-import { Download, FileSpreadsheet, Printer, ArrowUpRight, Search } from 'lucide-react';
-import { useWorkspace } from './providers';
-import { Button } from './ui/button';
-import { Empty, PageHeading } from './ui/common';
-import { RangeFilter } from './dashboard';
-import { buildReport, reports, toCSV } from '@/lib/domain/reports';
-import { can } from '@/lib/domain/types';
-function download(blob:Blob,name:string){const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();URL.revokeObjectURL(url);}
-export function ReportsPage(){
- const {data,session,from,to,loadMore}=useWorkspace();const [selected,setSelected]=useState('grinding');const [search,setSearch]=useState('');const [busy,setBusy]=useState(false);if(!data)return null;
- const allowed=reports.filter(([id])=>(id!=='recipe'||can(session,'recipes'))&&(id!=='sales'||can(session,'finance')));const rows=buildReport(data,selected).filter(r=>Object.values(r).join(' ').toLowerCase().includes(search.toLowerCase()));const headers=Array.from(new Set(rows.flatMap(Object.keys)));const title=reports.find(r=>r[0]===selected)?.[1]||'Report';
- return <><PageHeading eyebrow="FROM RECORDS TO UNDERSTANDING" title="The bigger picture." description="Reproducible reports from posted production and the stock ledger." actions={<Button variant="outline" onClick={()=>window.print()}><Printer size={16}/>Print / PDF</Button>}/><div className="report-grid no-print">{allowed.map(([id,label])=><button key={id} className={`report-option ${selected===id?'active':''}`} onClick={()=>setSelected(id)}><FileSpreadsheet size={18}/><span style={{flex:1}}>{label}</span><ArrowUpRight size={14}/></button>)}</div><div className="panel" style={{marginTop:25}}><div className="panel-head"><div><div className="print-only">SP PLAST INDUSTRIES · AHMEDABAD</div><h2>{title}</h2><p>{from} — {to} · Asia/Kolkata · kg / INR</p></div><div className="row no-print"><Button variant="outline" size="sm" disabled={data.has_more||!rows.length} onClick={()=>download(new Blob([toCSV(rows)],{type:'text/csv;charset=utf-8'}),`SP-Plast-${selected}-${from}-${to}.csv`)}><Download size={14}/>CSV</Button><Button variant="outline" size="sm" disabled={busy||data.has_more||!rows.length} onClick={async()=>{setBusy(true);try{const ExcelJS=await import('exceljs');const wb=new ExcelJS.Workbook();wb.creator='SP Plast Industries';const ws=wb.addWorksheet(title.slice(0,31));ws.columns=headers.map(h=>({header:h,key:h,width:24}));rows.forEach(r=>ws.addRow(r));ws.getRow(1).font={bold:true,color:{argb:'FFFFFFFF'}};ws.getRow(1).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF173C35'}};ws.views=[{state:'frozen',ySplit:1}];ws.autoFilter={from:{row:1,column:1},to:{row:1,column:headers.length}};const buffer=await wb.xlsx.writeBuffer();download(new Blob([new Uint8Array(buffer)],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),`SP-Plast-${selected}.xlsx`);}finally{setBusy(false);}}}>XLSX</Button></div></div><div className="panel-body no-print"><div className="toolbar"><RangeFilter/><div className="search-field"><Search size={15}/><input placeholder="Filter this report…" value={search} onChange={e=>setSearch(e.target.value)}/></div></div>{data.has_more&&<div className="notice warning">More records exist. Exports are disabled until all pages are loaded. <button className="text-button" onClick={()=>void loadMore()}>Load next page</button></div>}</div>{rows.length?<div className="table-wrap"><table><thead><tr>{headers.map(h=><th key={h}>{h.toUpperCase()}</th>)}</tr></thead><tbody>{rows.map((r,i)=><tr key={i}>{headers.map(h=><td key={h}>{r[h]??'—'}</td>)}</tr>)}</tbody></table></div>:<Empty title="No matching records in this range" description="Choose another date range, or record and approve the related factory operations."/>}<div className="panel-footer"><span>{rows.length} records · {session.demo?'Fictional demonstration data':'Authorized database records'}</span><span>Operational report · not a statutory invoice</span></div></div></>;
+"use client";
+import { ResponsiveTable } from "./ui/responsive-table";
+import { useState } from "react";
+import {
+  Download,
+  FileSpreadsheet,
+  Printer,
+  ArrowUpRight,
+  Search,
+} from "lucide-react";
+import { useWorkspace } from "./providers";
+import { Button } from "./ui/button";
+import { Empty, PageHeading, Field } from "./ui/common";
+import { RangeFilter } from "./dashboard";
+import { buildReport, reports, toCSV } from "@/lib/domain/reports";
+import { can } from "@/lib/domain/types";
+function download(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+export function ReportsPage() {
+  const { data, session, from, to, loadMore } = useWorkspace();
+  const [selected, setSelected] = useState("grinding");
+  const [search, setSearch] = useState("");
+  const [busy, setBusy] = useState(false);
+  if (!data) return null;
+  const allowed = reports.filter(
+    ([id]) =>
+      (id !== "recipe" || can(session, "recipes")) &&
+      (id !== "sales" || can(session, "finance")),
+  );
+  const rows = buildReport(data, selected).filter((r) =>
+    Object.values(r).join(" ").toLowerCase().includes(search.toLowerCase()),
+  );
+  const headers = Array.from(new Set(rows.flatMap(Object.keys)));
+  const title = reports.find((r) => r[0] === selected)?.[1] || "Report";
+  return (
+    <>
+      <PageHeading
+        eyebrow="FROM RECORDS TO UNDERSTANDING"
+        title="The bigger picture."
+        description="Reproducible reports from posted production and the stock ledger."
+        actions={
+          <Button variant="outline" onClick={() => window.print()}>
+            <Printer size={16} />
+            Print / PDF
+          </Button>
+        }
+      />
+      <div className="mobile-report-picker no-print">
+        <Field label="Choose a report">
+          <select
+            value={selected}
+            onChange={(e) => setSelected(e.target.value)}
+          >
+            {allowed.map(([id, label]) => (
+              <option key={id} value={id}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      <div className="report-grid no-print">
+        {allowed.map(([id, label]) => (
+          <button
+            key={id}
+            className={`report-option ${selected === id ? "active" : ""}`}
+            onClick={() => setSelected(id)}
+          >
+            <FileSpreadsheet size={18} />
+            <span style={{ flex: 1 }}>{label}</span>
+            <ArrowUpRight size={14} />
+          </button>
+        ))}
+      </div>
+      <div className="panel" style={{ marginTop: 25 }}>
+        <div className="panel-head">
+          <div>
+            <div className="print-only">SP PLAST INDUSTRIES · AHMEDABAD</div>
+            <h2>{title}</h2>
+            <p>
+              {from} — {to} · Asia/Kolkata · kg / INR
+            </p>
+          </div>
+          <div className="row no-print">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={data.has_more || !rows.length}
+              onClick={() =>
+                download(
+                  new Blob([toCSV(rows)], { type: "text/csv;charset=utf-8" }),
+                  `SP-Plast-${selected}-${from}-${to}.csv`,
+                )
+              }
+            >
+              <Download size={14} />
+              CSV
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy || data.has_more || !rows.length}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  const ExcelJS = await import("exceljs");
+                  const wb = new ExcelJS.Workbook();
+                  wb.creator = "SP Plast Industries";
+                  const ws = wb.addWorksheet(title.slice(0, 31));
+                  ws.columns = headers.map((h) => ({
+                    header: h,
+                    key: h,
+                    width: 24,
+                  }));
+                  rows.forEach((r) => ws.addRow(r));
+                  ws.getRow(1).font = {
+                    bold: true,
+                    color: { argb: "FFFFFFFF" },
+                  };
+                  ws.getRow(1).fill = {
+                    type: "pattern",
+                    pattern: "solid",
+                    fgColor: { argb: "FF173C35" },
+                  };
+                  ws.views = [{ state: "frozen", ySplit: 1 }];
+                  ws.autoFilter = {
+                    from: { row: 1, column: 1 },
+                    to: { row: 1, column: headers.length },
+                  };
+                  const buffer = await wb.xlsx.writeBuffer();
+                  download(
+                    new Blob([new Uint8Array(buffer)], {
+                      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    }),
+                    `SP-Plast-${selected}.xlsx`,
+                  );
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              XLSX
+            </Button>
+          </div>
+        </div>
+        <div className="panel-body no-print">
+          <div className="toolbar">
+            <RangeFilter />
+            <div className="search-field">
+              <Search size={15} />
+              <input
+                placeholder="Filter this report…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
+          {data.has_more && (
+            <div className="notice warning">
+              More records exist. Exports are disabled until all pages are
+              loaded.{" "}
+              <button className="text-button" onClick={() => void loadMore()}>
+                Load next page
+              </button>
+            </div>
+          )}
+        </div>
+        {rows.length ? (
+          <div className="table-wrap">
+            <ResponsiveTable>
+              <thead>
+                <tr>
+                  {headers.map((h) => (
+                    <th key={h}>{h.toUpperCase()}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={i}>
+                    {headers.map((h) => (
+                      <td key={h}>{r[h] ?? "—"}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </ResponsiveTable>
+          </div>
+        ) : (
+          <Empty
+            title="No matching records in this range"
+            description="Choose another date range, or record and approve the related factory operations."
+          />
+        )}
+        <div className="panel-footer">
+          <span>
+            {rows.length} records ·{" "}
+            {session.demo
+              ? "Fictional demonstration data"
+              : "Authorized database records"}
+          </span>
+          <span>Operational report · not a statutory invoice</span>
+        </div>
+      </div>
+    </>
+  );
 }

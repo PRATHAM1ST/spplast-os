@@ -1,39 +1,742 @@
-'use client';
-import { useState } from 'react';
-import { Plus, Settings2, SlidersHorizontal, Trash2, ShieldCheck } from 'lucide-react';
-import { useWorkspace } from './providers';
-import { Button } from './ui/button';
-import { Badge, Empty, Field, Modal, PageHeading } from './ui/common';
-import { GenericForm, type FieldDef } from './forms';
-import { can, type Parameter } from '@/lib/domain/types';
-import { humanize, uid, today } from '@/lib/utils';
-import { toast } from 'sonner';
-const list=(values:string[])=>values.map(v=>({value:v,label:humanize(v)}));
-const masterFields:Record<string,FieldDef[]>={
- materials:[{key:'name',label:'Material name',required:true},{key:'code',label:'Internal code',required:true},{key:'polymer',label:'Polymer / category',required:true},{key:'form',label:'Material form',options:list(['incoming_scrap','grinding_flakes','mixed_feedstock','granules','waste','other']),required:true},{key:'color',label:'Color name'},{key:'color_hex',label:'Color swatch',type:'color',default:'#a8b6a0'},{key:'grade',label:'Grade / quality classification'},{key:'active',label:'Status',options:list(['true','false']),default:'true'},{key:'notes',label:'Notes',type:'textarea'}],
- machines:[{key:'name',label:'Machine name',required:true},{key:'code',label:'Machine ID',required:true},{key:'category',label:'Category',options:list(['grinder','extruder','washing','drying','custom']),required:true},{key:'status',label:'Status',options:list(['available','running','maintenance','inactive']),default:'available'},{key:'capacity_kg_hour',label:'Reference capacity (kg/hour)',type:'number',hint:'Optional. Use a verified equipment reference.'},{key:'notes',label:'Installed configuration / maintenance notes',type:'textarea'}],
- shifts:[{key:'name',label:'Shift name',required:true},{key:'starts_at',label:'Planned start · IST',type:'time',required:true},{key:'ends_at',label:'Planned end · IST',type:'time',required:true,hint:'An earlier end time means the next day.'}],
- locations:[{key:'name',label:'Room / rack / warehouse',required:true},{key:'code',label:'Location code',required:true}],
- parties:[{key:'name',label:'Party name',required:true},{key:'kind',label:'Party type',options:list(['supplier','customer','both']),default:'both'},{key:'phone',label:'Phone'},{key:'gstin',label:'GSTIN if applicable'},{key:'address',label:'Address',type:'textarea'}],
+"use client";
+import { useState } from "react";
+import {
+  Plus,
+  Settings2,
+  SlidersHorizontal,
+  Trash2,
+  ShieldCheck,
+} from "lucide-react";
+import { useWorkspace } from "./providers";
+import { Button } from "./ui/button";
+import { Badge, Empty, Field, Modal, PageHeading } from "./ui/common";
+import { GenericForm, type FieldDef } from "./forms";
+import { can, type Parameter } from "@/lib/domain/types";
+import { humanize, uid, today } from "@/lib/utils";
+import { toast } from "sonner";
+import { ConnectionStatus } from "./connection-status";
+const list = (values: string[]) =>
+  values.map((v) => ({ value: v, label: humanize(v) }));
+const masterFields: Record<string, FieldDef[]> = {
+  materials: [
+    { key: "name", label: "Material name", required: true },
+    { key: "code", label: "Internal code", required: true },
+    { key: "polymer", label: "Polymer / category", required: true },
+    {
+      key: "form",
+      label: "Material form",
+      options: list([
+        "incoming_scrap",
+        "grinding_flakes",
+        "mixed_feedstock",
+        "granules",
+        "waste",
+        "other",
+      ]),
+      required: true,
+    },
+    { key: "color", label: "Color name" },
+    {
+      key: "color_hex",
+      label: "Color swatch",
+      type: "color",
+      default: "#a8b6a0",
+    },
+    { key: "grade", label: "Grade / quality classification" },
+    {
+      key: "active",
+      label: "Status",
+      options: list(["true", "false"]),
+      default: "true",
+    },
+    { key: "notes", label: "Notes", type: "textarea" },
+  ],
+  machines: [
+    { key: "name", label: "Machine name", required: true },
+    { key: "code", label: "Machine ID", required: true },
+    {
+      key: "category",
+      label: "Category",
+      options: list(["grinder", "extruder", "washing", "drying", "custom"]),
+      required: true,
+    },
+    {
+      key: "status",
+      label: "Status",
+      options: list(["available", "running", "maintenance", "inactive"]),
+      default: "available",
+    },
+    {
+      key: "capacity_kg_hour",
+      label: "Reference capacity (kg/hour)",
+      type: "number",
+      hint: "Optional. Use a verified equipment reference.",
+    },
+    {
+      key: "notes",
+      label: "Installed configuration / maintenance notes",
+      type: "textarea",
+    },
+  ],
+  shifts: [
+    { key: "name", label: "Shift name", required: true },
+    {
+      key: "starts_at",
+      label: "Planned start · IST",
+      type: "time",
+      required: true,
+    },
+    {
+      key: "ends_at",
+      label: "Planned end · IST",
+      type: "time",
+      required: true,
+      hint: "An earlier end time means the next day.",
+    },
+  ],
+  locations: [
+    { key: "name", label: "Room / rack / warehouse", required: true },
+    { key: "code", label: "Location code", required: true },
+  ],
+  parties: [
+    { key: "name", label: "Party name", required: true },
+    {
+      key: "kind",
+      label: "Party type",
+      options: list(["supplier", "customer", "both"]),
+      default: "both",
+    },
+    { key: "phone", label: "Phone" },
+    { key: "gstin", label: "GSTIN if applicable" },
+    { key: "address", label: "Address", type: "textarea" },
+  ],
 };
-export function ParameterEditor({value,onChange}:{value:Parameter[];onChange:(v:Parameter[])=>void}) {
- return <div className="stack">{value.map((p,i)=>{const change=(v:Partial<Parameter>)=>onChange(value.map((x,j)=>j===i?{...x,...v}:x));return <div className="bag-row" key={i}><div className="row"><h3 className="small">Parameter {i+1}</h3><Button type="button" variant="ghost" size="sm" aria-label="Remove parameter" onClick={()=>onChange(value.filter((_,j)=>i!==j))}><Trash2 size={14}/></Button></div><div className="form-grid"><Field label="Stable field key"><input value={p.key} onChange={e=>change({key:e.target.value.replace(/[^a-z0-9_]/g,'')})}/></Field><Field label="Display label"><input value={p.label} onChange={e=>change({label:e.target.value})}/></Field><Field label="Value type"><select value={p.type} onChange={e=>change({type:e.target.value as Parameter['type']})}><option value="number">Measured number</option><option value="text">Observation text</option><option value="select">Selection</option></select></Field><Field label="Measurement unit"><input value={p.unit} onChange={e=>change({unit:e.target.value})} placeholder="°C, RPM, A, g/10min…"/></Field>{p.type==='select'&&<Field label="Allowed options (comma separated)"><input value={p.options?.join(',')||''} onChange={e=>change({options:e.target.value.split(',').map(x=>x.trim())})}/></Field>}<label className="row small" style={{justifyContent:'flex-start'}}><input type="checkbox" checked={p.required} onChange={e=>change({required:e.target.checked})}/>Required when recording</label></div></div>;})}<Button type="button" variant="outline" onClick={()=>onChange([...value,{key:'',label:'',type:'number',unit:'',required:false}])}><Plus size={15}/>Add parameter</Button></div>;
+export function ParameterEditor({
+  value,
+  onChange,
+}: {
+  value: Parameter[];
+  onChange: (v: Parameter[]) => void;
+}) {
+  return (
+    <div className="stack">
+      {value.map((p, i) => {
+        const change = (v: Partial<Parameter>) =>
+          onChange(value.map((x, j) => (j === i ? { ...x, ...v } : x)));
+        return (
+          <div className="bag-row" key={i}>
+            <div className="row">
+              <h3 className="small">Parameter {i + 1}</h3>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label="Remove parameter"
+                onClick={() => onChange(value.filter((_, j) => i !== j))}
+              >
+                <Trash2 size={14} />
+              </Button>
+            </div>
+            <div className="form-grid">
+              <Field label="Stable field key">
+                <input
+                  value={p.key}
+                  onChange={(e) =>
+                    change({ key: e.target.value.replace(/[^a-z0-9_]/g, "") })
+                  }
+                />
+              </Field>
+              <Field label="Display label">
+                <input
+                  value={p.label}
+                  onChange={(e) => change({ label: e.target.value })}
+                />
+              </Field>
+              <Field label="Value type">
+                <select
+                  value={p.type}
+                  onChange={(e) =>
+                    change({ type: e.target.value as Parameter["type"] })
+                  }
+                >
+                  <option value="number">Measured number</option>
+                  <option value="text">Observation text</option>
+                  <option value="select">Selection</option>
+                </select>
+              </Field>
+              <Field label="Measurement unit">
+                <input
+                  value={p.unit}
+                  onChange={(e) => change({ unit: e.target.value })}
+                  placeholder="°C, RPM, A, g/10min…"
+                />
+              </Field>
+              {p.type === "select" && (
+                <Field label="Allowed options (comma separated)">
+                  <input
+                    value={p.options?.join(",") || ""}
+                    onChange={(e) =>
+                      change({
+                        options: e.target.value.split(",").map((x) => x.trim()),
+                      })
+                    }
+                  />
+                </Field>
+              )}
+              <label
+                className="row small"
+                style={{ justifyContent: "flex-start" }}
+              >
+                <input
+                  type="checkbox"
+                  checked={p.required}
+                  onChange={(e) => change({ required: e.target.checked })}
+                />
+                Required when recording
+              </label>
+            </div>
+          </div>
+        );
+      })}
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() =>
+          onChange([
+            ...value,
+            { key: "", label: "", type: "number", unit: "", required: false },
+          ])
+        }
+      >
+        <Plus size={15} />
+        Add parameter
+      </Button>
+    </div>
+  );
 }
 export function SettingsPage() {
- const {data,session,execute,refresh}=useWorkspace();const [tab,setTab]=useState('materials');const [editing,setEditing]=useState<Record<string,unknown>|null>(null);const [parameters,setParameters]=useState<Parameter[]|null>(null);const [parameterMachine,setParameterMachine]=useState<string|null>(null);const [saving,setSaving]=useState(false);
- if(!data)return null;if(!can(session,'configure'))return <Empty title="Factory settings are restricted" description="Your administrator manages configuration and access permissions."/>;
- const tables=['materials','machines','shifts','locations','parties'];const rows=tables.includes(tab)?data[tab as 'materials'] as unknown as Record<string,unknown>[]:[];
- const sections=[...tables,'operational','quality','tax','team','approvals','connections','demo'];
- return <><PageHeading eyebrow="BUILT AROUND YOUR FACTORY" title="Make it work your way." description="Actual equipment, clear terminology and the right access for every person."/><div className="settings-grid"><nav className="settings-nav no-print">{sections.map(t=><Button key={t} variant={tab===t?'secondary':'ghost'} onClick={()=>setTab(t)}><Settings2 size={14}/>{humanize(t)}</Button>)}</nav><div className="panel"><div className="panel-head" style={{paddingBottom:20}}><h2>{humanize(tab)}</h2>{tables.includes(tab)&&<Button size="sm" onClick={()=>setEditing({})}><Plus size={14}/>Add {tab==='parties'?'party':tab.slice(0,-1)}</Button>}</div><div className="panel-body">
- {tables.includes(tab)&&<div className="stack">{rows.map(r=><div className="row" key={String(r.id)} style={{borderBottom:'1px solid var(--line)',paddingBottom:14}}><div><h3 className="small">{String(r.name)}</h3><small>{String(r.code||r.starts_at||r.kind||'')}</small></div><div className="row">{tab==='machines'&&<Button size="sm" variant="ghost" onClick={()=>{setParameterMachine(String(r.id));setParameters((r.parameters||[]) as Parameter[]);}}><SlidersHorizontal size={14}/>Parameters</Button>}<Button variant="outline" size="sm" onClick={()=>setEditing(r)}>Edit</Button></div></div>)}{!rows.length&&<Empty title="Configure your first record" description="Use your factory’s real equipment names and classifications."/>}</div>}
- {tab==='operational'&&<GenericForm fields={[{key:'company_name',label:'Company name',required:true},{key:'site_name',label:'Factory site',required:true},{key:'bag_presets',label:'Bag weight presets (kg)',hint:'Comma separated; these are shortcuts, not assumed weights.',required:true},{key:'photo_limit_mb',label:'Max photo upload (MB)',type:'number',hint:'Up to 8 MB per image.'},{key:'loss_tolerance_percent',label:'Loss review tolerance (%)',type:'number'},{key:'locale',label:'Interface language preference',options:[{value:'en',label:'English'},{value:'hi',label:'Hindi (dictionary foundation)'},{value:'gu',label:'Gujarati (dictionary foundation)'}]}]} initial={{...data.settings,bag_presets:data.settings.bag_presets.join(', ')}} onSubmit={async v=>{const presets=v.bag_presets.split(',').map(Number);if(presets.some(n=>!Number.isFinite(n)||n<=0))throw new Error('All presets must be positive numbers');if(Number(v.photo_limit_mb)>8||Number(v.photo_limit_mb)<=0)throw new Error('Photo limit must be between 1 and 8 MB');await execute('settings',{...data.settings,...v,bag_presets:presets,photo_limit_mb:Number(v.photo_limit_mb)});}}/>}
- {tab==='quality'&&<><p style={{marginBottom:20}}>Define tests your team actually measures. No results or process setpoints are assumed.</p><Button variant="outline" onClick={()=>{setParameterMachine(null);setParameters(data.settings.qc_fields);}}>Configure quality field definitions</Button></>}
- {tab==='tax'&&<><p style={{marginBottom:20}}>Tax rates are explicit reference settings. Each dispatch records its selected rate, date and supply location.</p>{data.settings.tax_rates.map((t,i)=><div className="row" key={i} style={{marginBottom:15}}><span>{t.name} · {t.percent}%</span><small>{t.effective_from} · {t.supply_location}</small></div>)}<GenericForm fields={[{key:'name',label:'Tax reference name',required:true},{key:'percent',label:'Percentage',type:'number',required:true},{key:'effective_from',label:'Effective from',type:'date',required:true},{key:'supply_location',label:'Supply location / scope',required:true}]} onSubmit={async v=>{if(Number(v.percent)<0||Number(v.percent)>100)throw new Error('Tax percentage must be 0–100');await execute('settings',{...data.settings,tax_rates:[...data.settings.tax_rates,v]});}} submit="Add tax reference"/></>}
- {tab==='team'&&<><div className="notice" style={{marginBottom:22}}><ShieldCheck size={16} style={{display:'inline',marginRight:6}}/>Users first register through Neon Auth. Add their exact authenticated user ID here. Permissions are rechecked by the database on every command.</div>{data.members.map(m=><div className="row" key={m.user_id} style={{marginBottom:17}}><div><h3 className="small">{m.email}</h3><small>{m.user_id}</small></div><Badge status={m.role}/></div>)}<GenericForm fields={[{key:'user_id',label:'Neon Auth user ID',required:true},{key:'email',label:'Employee email',type:'email',required:true},{key:'role',label:'Role',options:list(['admin','manager','supervisor','operator','accountant','viewer']),required:true},{key:'recipes',label:'Read confidential formulas',options:list(['default','allow','deny']),default:'default'},{key:'recipe_edit',label:'Create / approve recipes',options:list(['default','allow','deny']),default:'default'},{key:'finance',label:'Financial access',options:list(['default','allow','deny']),default:'default'},{key:'approve',label:'Approve production / QC',options:list(['default','allow','deny']),default:'default'}]} onSubmit={async v=>{const permissions=Object.fromEntries(['recipes','recipe_edit','finance','approve'].filter(k=>v[k]!=='default').map(k=>[k,v[k]==='allow']));await execute('membership',{user_id:v.user_id,email:v.email,role:v.role,permissions});}} submit="Save employee access"/></>}
- {tab==='approvals'&&<><div className="notice" style={{marginBottom:20}}>Draft → submitted → approved. Stock posts only on approval. Unreconciled mass prevents submission. Approved quantities require reversal and a new corrected batch.</div><GenericForm fields={[{key:'date',label:'Finalize production day',type:'date',default:today(),required:true}]} onSubmit={async v=>{await execute('lock_day',v);}} submit="Lock production day"/><p className="small" style={{marginTop:20}}>Locked days: {data.locked_days.join(', ')||'None'}</p></>}
- {tab==='connections'&&<div className="stack"><div className="row"><h3>Neon PostgreSQL & Auth</h3><Badge status={session.demo?'hold':'pass'}>{session.demo?'Demo · not connected':'Authenticated'}</Badge></div><p className="small">Configure DATABASE_URL, NEON_AUTH_BASE_URL and NEON_AUTH_COOKIE_SECRET in the server environment. Run the checked-in migrations with the administrator connection.</p><div className="row"><h3>Private object storage</h3><Badge>Environment configured</Badge></div><p className="small">S3_ENDPOINT, S3_REGION, S3_BUCKET, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY. Upload failures remain in the local queue; a saved batch does not imply its photos are backed up.</p><div className="row"><h3>Tally · e-way bill · machine sensors</h3><Badge status="hold">Unconfigured</Badge></div><p className="small">Use CSV/XLSX exports today. Integration adapters are separate from authoritative inventory posting.</p><a className="text-button" href="https://neon.com/docs/auth/quick-start/nextjs-api-only" target="_blank" rel="noreferrer">Current Neon setup documentation ↗</a></div>}
- {tab==='demo'&&<div className="stack"><h3>Isolated demonstration workspace</h3><p>Sample machines, customers, quantities and formulas are fictional. Demo records live in a separate local PostgreSQL database and are never uploaded to your Neon production database.</p>{session.demo?<Button variant="destructive" disabled={saving} onClick={async()=>{if(!confirm('Reset all demo operational records to the original walkthrough?'))return;setSaving(true);try{await(await import('@/lib/db/demo')).resetDemo();refresh();toast.success('Demo reset');}finally{setSaving(false);}}}>Reset demonstration records</Button>:<p>Production mode has no demo records. Disable NEXT_PUBLIC_ENABLE_DEMO to remove demo access from the login screen.</p>}</div>}
- </div></div></div>
- <Modal open={!!editing} onClose={()=>setEditing(null)} title={`${editing?.id?'Edit':'Add'} ${tab==='parties'?'party':tab.slice(0,-1)}`} description="Factory master records are editable. Historical ledger quantities are never recalculated from these descriptions.">{editing&&<GenericForm fields={masterFields[tab]||[]} initial={editing} onSubmit={async v=>{const record:Record<string,unknown>={...v,id:editing.id||uid()};if(tab==='materials')record.active=v.active==='true';if(tab==='machines'){record.capacity_kg_hour=v.capacity_kg_hour||null;record.parameters=editing.parameters||[];}await execute('master',{table:tab,record},editing.version as number|undefined);setEditing(null);}}/>}</Modal>
- <Modal open={parameters!==null} onClose={()=>setParameters(null)} wide title={parameterMachine?'Machine parameter definitions':'Quality test definitions'} description="Typed fields with stable keys and explicit units. Targets must come from your approved factory references.">{parameters&&<><ParameterEditor value={parameters} onChange={setParameters}/><div className="form-actions"><Button onClick={async()=>{if(parameters.some(p=>!p.key||!p.label)||new Set(parameters.map(p=>p.key)).size!==parameters.length){toast.error('Each definition needs a unique key and a label');return;}if(parameterMachine){const m=data.machines.find(m=>m.id===parameterMachine)!;await execute('master',{table:'machines',record:{...m,parameters}},m.version);}else await execute('settings',{...data.settings,qc_fields:parameters});setParameters(null);}}>Save definitions</Button></div></>}</Modal></>;
+  const { data, session, execute, refresh } = useWorkspace();
+  const [tab, setTab] = useState("materials");
+  const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
+  const [parameters, setParameters] = useState<Parameter[] | null>(null);
+  const [parameterMachine, setParameterMachine] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  if (!data) return null;
+  if (!can(session, "configure"))
+    return (
+      <Empty
+        title="Factory settings are restricted"
+        description="Your administrator manages configuration and access permissions."
+      />
+    );
+  const tables = ["materials", "machines", "shifts", "locations", "parties"];
+  const rows = tables.includes(tab)
+    ? (data[tab as "materials"] as unknown as Record<string, unknown>[])
+    : [];
+  const sections = [
+    ...tables,
+    "operational",
+    "quality",
+    "tax",
+    "team",
+    "approvals",
+    "connections",
+    "demo",
+  ];
+  return (
+    <>
+      <PageHeading
+        eyebrow="BUILT AROUND YOUR FACTORY"
+        title="Make it work your way."
+        description="Actual equipment, clear terminology and the right access for every person."
+      />
+      <div className="settings-grid">
+        <nav className="settings-nav no-print">
+          {sections.map((t) => (
+            <Button
+              key={t}
+              variant={tab === t ? "secondary" : "ghost"}
+              onClick={() => setTab(t)}
+            >
+              <Settings2 size={14} />
+              {humanize(t)}
+            </Button>
+          ))}
+        </nav>
+        <div className="panel">
+          <div className="panel-head" style={{ paddingBottom: 20 }}>
+            <h2>{humanize(tab)}</h2>
+            {tables.includes(tab) && (
+              <Button size="sm" onClick={() => setEditing({})}>
+                <Plus size={14} />
+                Add {tab === "parties" ? "party" : tab.slice(0, -1)}
+              </Button>
+            )}
+          </div>
+          <div className="panel-body">
+            {tables.includes(tab) && (
+              <div className="stack">
+                {rows.map((r) => (
+                  <div
+                    className="row"
+                    key={String(r.id)}
+                    style={{
+                      borderBottom: "1px solid var(--line)",
+                      paddingBottom: 14,
+                    }}
+                  >
+                    <div>
+                      <h3 className="small">{String(r.name)}</h3>
+                      <small>
+                        {String(r.code || r.starts_at || r.kind || "")}
+                      </small>
+                    </div>
+                    <div className="row">
+                      {tab === "machines" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setParameterMachine(String(r.id));
+                            setParameters((r.parameters || []) as Parameter[]);
+                          }}
+                        >
+                          <SlidersHorizontal size={14} />
+                          Parameters
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setEditing(r)}
+                      >
+                        Edit
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                {!rows.length && (
+                  <Empty
+                    title="Configure your first record"
+                    description="Use your factory’s real equipment names and classifications."
+                  />
+                )}
+              </div>
+            )}
+            {tab === "operational" && (
+              <GenericForm
+                fields={[
+                  {
+                    key: "company_name",
+                    label: "Company name",
+                    required: true,
+                  },
+                  { key: "site_name", label: "Factory site", required: true },
+                  {
+                    key: "bag_presets",
+                    label: "Bag weight presets (kg)",
+                    hint: "Comma separated; these are shortcuts, not assumed weights.",
+                    required: true,
+                  },
+                  {
+                    key: "photo_limit_mb",
+                    label: "Max photo upload (MB)",
+                    type: "number",
+                    hint: "Up to 8 MB per image.",
+                  },
+                  {
+                    key: "loss_tolerance_percent",
+                    label: "Loss review tolerance (%)",
+                    type: "number",
+                  },
+                  {
+                    key: "locale",
+                    label: "Interface language preference",
+                    options: [
+                      { value: "en", label: "English" },
+                      { value: "hi", label: "Hindi (dictionary foundation)" },
+                      {
+                        value: "gu",
+                        label: "Gujarati (dictionary foundation)",
+                      },
+                    ],
+                  },
+                ]}
+                initial={{
+                  ...data.settings,
+                  bag_presets: data.settings.bag_presets.join(", "),
+                }}
+                onSubmit={async (v) => {
+                  const presets = v.bag_presets.split(",").map(Number);
+                  if (presets.some((n) => !Number.isFinite(n) || n <= 0))
+                    throw new Error("All presets must be positive numbers");
+                  if (
+                    Number(v.photo_limit_mb) > 8 ||
+                    Number(v.photo_limit_mb) <= 0
+                  )
+                    throw new Error("Photo limit must be between 1 and 8 MB");
+                  await execute("settings", {
+                    ...data.settings,
+                    ...v,
+                    bag_presets: presets,
+                    photo_limit_mb: Number(v.photo_limit_mb),
+                  });
+                }}
+              />
+            )}
+            {tab === "quality" && (
+              <>
+                <p style={{ marginBottom: 20 }}>
+                  Define tests your team actually measures. No results or
+                  process setpoints are assumed.
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setParameterMachine(null);
+                    setParameters(data.settings.qc_fields);
+                  }}
+                >
+                  Configure quality field definitions
+                </Button>
+              </>
+            )}
+            {tab === "tax" && (
+              <>
+                <p style={{ marginBottom: 20 }}>
+                  Tax rates are explicit reference settings. Each dispatch
+                  records its selected rate, date and supply location.
+                </p>
+                {data.settings.tax_rates.map((t, i) => (
+                  <div className="row" key={i} style={{ marginBottom: 15 }}>
+                    <span>
+                      {t.name} · {t.percent}%
+                    </span>
+                    <small>
+                      {t.effective_from} · {t.supply_location}
+                    </small>
+                  </div>
+                ))}
+                <GenericForm
+                  fields={[
+                    {
+                      key: "name",
+                      label: "Tax reference name",
+                      required: true,
+                    },
+                    {
+                      key: "percent",
+                      label: "Percentage",
+                      type: "number",
+                      required: true,
+                    },
+                    {
+                      key: "effective_from",
+                      label: "Effective from",
+                      type: "date",
+                      required: true,
+                    },
+                    {
+                      key: "supply_location",
+                      label: "Supply location / scope",
+                      required: true,
+                    },
+                  ]}
+                  onSubmit={async (v) => {
+                    if (Number(v.percent) < 0 || Number(v.percent) > 100)
+                      throw new Error("Tax percentage must be 0–100");
+                    await execute("settings", {
+                      ...data.settings,
+                      tax_rates: [...data.settings.tax_rates, v],
+                    });
+                  }}
+                  submit="Add tax reference"
+                />
+              </>
+            )}
+            {tab === "team" && (
+              <>
+                <div className="notice" style={{ marginBottom: 22 }}>
+                  <ShieldCheck
+                    size={16}
+                    style={{ display: "inline", marginRight: 6 }}
+                  />
+                  Users first register through Neon Auth. Add their exact
+                  authenticated user ID here. Permissions are rechecked by the
+                  database on every command.
+                </div>
+                {data.members.map((m) => (
+                  <div
+                    className="row"
+                    key={m.user_id}
+                    style={{ marginBottom: 17 }}
+                  >
+                    <div>
+                      <h3 className="small">{m.email}</h3>
+                      <small>{m.user_id}</small>
+                    </div>
+                    <Badge status={m.role} />
+                  </div>
+                ))}
+                <GenericForm
+                  fields={[
+                    {
+                      key: "user_id",
+                      label: "Neon Auth user ID",
+                      required: true,
+                    },
+                    {
+                      key: "email",
+                      label: "Employee email",
+                      type: "email",
+                      required: true,
+                    },
+                    {
+                      key: "role",
+                      label: "Role",
+                      options: list([
+                        "admin",
+                        "manager",
+                        "supervisor",
+                        "operator",
+                        "accountant",
+                        "viewer",
+                      ]),
+                      required: true,
+                    },
+                    {
+                      key: "recipes",
+                      label: "Read confidential formulas",
+                      options: list(["default", "allow", "deny"]),
+                      default: "default",
+                    },
+                    {
+                      key: "recipe_edit",
+                      label: "Create / approve recipes",
+                      options: list(["default", "allow", "deny"]),
+                      default: "default",
+                    },
+                    {
+                      key: "finance",
+                      label: "Financial access",
+                      options: list(["default", "allow", "deny"]),
+                      default: "default",
+                    },
+                    {
+                      key: "approve",
+                      label: "Approve production / QC",
+                      options: list(["default", "allow", "deny"]),
+                      default: "default",
+                    },
+                  ]}
+                  onSubmit={async (v) => {
+                    const permissions = Object.fromEntries(
+                      ["recipes", "recipe_edit", "finance", "approve"]
+                        .filter((k) => v[k] !== "default")
+                        .map((k) => [k, v[k] === "allow"]),
+                    );
+                    await execute("membership", {
+                      user_id: v.user_id,
+                      email: v.email,
+                      role: v.role,
+                      permissions,
+                    });
+                  }}
+                  submit="Save employee access"
+                />
+              </>
+            )}
+            {tab === "approvals" && (
+              <>
+                <div className="notice" style={{ marginBottom: 20 }}>
+                  Draft → submitted → approved. Stock posts only on approval.
+                  Unreconciled mass prevents submission. Approved quantities
+                  require reversal and a new corrected batch.
+                </div>
+                <GenericForm
+                  fields={[
+                    {
+                      key: "date",
+                      label: "Finalize production day",
+                      type: "date",
+                      default: today(),
+                      required: true,
+                    },
+                  ]}
+                  onSubmit={async (v) => {
+                    await execute("lock_day", v);
+                  }}
+                  submit="Lock production day"
+                />
+                <p className="small" style={{ marginTop: 20 }}>
+                  Locked days: {data.locked_days.join(", ") || "None"}
+                </p>
+              </>
+            )}
+            {tab === "connections" && (
+              <div className="stack">
+                <div className="row">
+                  <h3>Neon PostgreSQL & Auth</h3>
+                  <Badge status={session.demo ? "hold" : "pass"}>
+                    {session.demo ? "Demo · not connected" : "Authenticated"}
+                  </Badge>
+                </div>
+                <p className="small">
+                  Configure DATABASE_URL, NEON_AUTH_BASE_URL and
+                  NEON_AUTH_COOKIE_SECRET in the server environment. Run the
+                  checked-in migrations with the administrator connection.
+                </p>
+                <div className="row">
+                  <h3>Private object storage</h3>
+                  <ConnectionStatus />
+                </div>
+                <p className="small">
+                  S3_ENDPOINT, S3_REGION, S3_BUCKET, S3_ACCESS_KEY_ID and
+                  S3_SECRET_ACCESS_KEY. Upload failures remain in the local
+                  queue; a saved batch does not imply its photos are backed up.
+                </p>
+                <div className="row">
+                  <h3>Tally · e-way bill · machine sensors</h3>
+                  <Badge status="hold">Unconfigured</Badge>
+                </div>
+                <p className="small">
+                  Use CSV/XLSX exports today. Integration adapters are separate
+                  from authoritative inventory posting.
+                </p>
+                <a
+                  className="text-button"
+                  href="https://neon.com/docs/auth/quick-start/nextjs-api-only"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Current Neon setup documentation ↗
+                </a>
+              </div>
+            )}
+            {tab === "demo" && (
+              <div className="stack">
+                <h3>Isolated demonstration workspace</h3>
+                <p>
+                  Sample machines, customers, quantities and formulas are
+                  fictional. Demo records live in a separate local PostgreSQL
+                  database and are never uploaded to your Neon production
+                  database.
+                </p>
+                {session.demo ? (
+                  <Button
+                    variant="destructive"
+                    disabled={saving}
+                    onClick={async () => {
+                      if (
+                        !confirm(
+                          "Reset all demo operational records to the original walkthrough?",
+                        )
+                      )
+                        return;
+                      setSaving(true);
+                      try {
+                        await (await import("@/lib/db/demo")).resetDemo();
+                        refresh();
+                        toast.success("Demo reset");
+                      } finally {
+                        setSaving(false);
+                      }
+                    }}
+                  >
+                    Reset demonstration records
+                  </Button>
+                ) : (
+                  <p>
+                    Production mode has no demo records. Disable
+                    NEXT_PUBLIC_ENABLE_DEMO to remove demo access from the login
+                    screen.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      <Modal
+        open={!!editing}
+        onClose={() => setEditing(null)}
+        title={`${editing?.id ? "Edit" : "Add"} ${tab === "parties" ? "party" : tab.slice(0, -1)}`}
+        description="Factory master records are editable. Historical ledger quantities are never recalculated from these descriptions."
+      >
+        {editing && (
+          <GenericForm
+            fields={masterFields[tab] || []}
+            initial={editing}
+            onSubmit={async (v) => {
+              const record: Record<string, unknown> = {
+                ...v,
+                id: editing.id || uid(),
+              };
+              if (tab === "materials") record.active = v.active === "true";
+              if (tab === "machines") {
+                record.capacity_kg_hour = v.capacity_kg_hour || null;
+                record.parameters = editing.parameters || [];
+              }
+              await execute(
+                "master",
+                { table: tab, record },
+                editing.version as number | undefined,
+              );
+              setEditing(null);
+            }}
+          />
+        )}
+      </Modal>
+      <Modal
+        open={parameters !== null}
+        onClose={() => setParameters(null)}
+        wide
+        title={
+          parameterMachine
+            ? "Machine parameter definitions"
+            : "Quality test definitions"
+        }
+        description="Typed fields with stable keys and explicit units. Targets must come from your approved factory references."
+      >
+        {parameters && (
+          <>
+            <ParameterEditor value={parameters} onChange={setParameters} />
+            <div className="form-actions">
+              <Button
+                onClick={async () => {
+                  if (
+                    parameters.some((p) => !p.key || !p.label) ||
+                    new Set(parameters.map((p) => p.key)).size !==
+                      parameters.length
+                  ) {
+                    toast.error(
+                      "Each definition needs a unique key and a label",
+                    );
+                    return;
+                  }
+                  if (parameterMachine) {
+                    const m = data.machines.find(
+                      (m) => m.id === parameterMachine,
+                    )!;
+                    await execute(
+                      "master",
+                      { table: "machines", record: { ...m, parameters } },
+                      m.version,
+                    );
+                  } else
+                    await execute("settings", {
+                      ...data.settings,
+                      qc_fields: parameters,
+                    });
+                  setParameters(null);
+                }}
+              >
+                Save definitions
+              </Button>
+            </div>
+          </>
+        )}
+      </Modal>
+    </>
+  );
 }

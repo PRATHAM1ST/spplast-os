@@ -1,31 +1,579 @@
-'use client';
-import dynamic from 'next/dynamic';
-import Link from 'next/link';
-import { Factory, Layers3, Package, ArrowUpRight, ArrowDownLeft, Truck, Calculator, Camera, Plus, Leaf, Activity, ChevronRight } from 'lucide-react';
-import { useWorkspace } from './providers';
-import { Badge, PageHeading, Empty } from './ui/common';
-import { Button } from './ui/button';
-import { kg, today, dateLabel } from '@/lib/utils';
-import { sum, batchMath } from '@/lib/domain/math';
-import type { Batch } from '@/lib/domain/types';
-const Chart=dynamic(()=>import('./charts').then(m=>m.ProductionChart),{ssr:false,loading:()=> <div className="chart"/>});
+"use client";
+import { ResponsiveTable } from "./ui/responsive-table";
+import dynamic from "next/dynamic";
+import { useState } from "react";
+import { useWideScreen } from "@/lib/use-wide-screen";
+import Link from "next/link";
+import {
+  Factory,
+  Layers3,
+  Package,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Truck,
+  Calculator,
+  Camera,
+  Plus,
+  Leaf,
+  Activity,
+  ChevronRight,
+} from "lucide-react";
+import { useWorkspace } from "./providers";
+import { Badge, PageHeading, Empty } from "./ui/common";
+import { Button } from "./ui/button";
+import { kg, today, dateLabel } from "@/lib/utils";
+import { sum, batchMath } from "@/lib/domain/math";
+import type { Batch } from "@/lib/domain/types";
+const Chart = dynamic(() => import("./charts").then((m) => m.ProductionChart), {
+  ssr: false,
+  loading: () => <div className="chart" />,
+});
 export function RangeFilter() {
- const {from,to,setRange}=useWorkspace();
- return <div className="date-filter no-print"><select aria-label="Date range preset" defaultValue="month" onChange={e=>{const end=today();const d=new Date(`${end}T12:00:00Z`);if(e.target.value==='today')setRange(end,end);if(e.target.value==='yesterday'){d.setUTCDate(d.getUTCDate()-1);setRange(d.toISOString().slice(0,10),d.toISOString().slice(0,10));}if(e.target.value==='week'){d.setUTCDate(d.getUTCDate()-6);setRange(d.toISOString().slice(0,10),end);}if(e.target.value==='month')setRange(end.slice(0,7)+'-01',end);}}><option value="today">Today</option><option value="yesterday">Yesterday</option><option value="week">This week</option><option value="month">This month</option><option value="custom">Custom</option></select><input type="date" aria-label="From date" value={from} max={to} onChange={e=>e.target.value&&setRange(e.target.value,to)}/><span className="muted">–</span><input type="date" aria-label="To date" value={to} min={from} onChange={e=>e.target.value&&setRange(from,e.target.value)}/></div>;
+  const { from, to, setRange } = useWorkspace();
+  const [custom, setCustom] = useState(false);
+  const end = today();
+  const ago = (days: number) => {
+    const d = new Date(`${end}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - days);
+    return d.toISOString().slice(0, 10);
+  };
+  const preset =
+    from === end && to === end
+      ? "today"
+      : from === ago(1) && to === ago(1)
+        ? "yesterday"
+        : to === end && from === ago(6)
+          ? "week"
+          : to === end && from === end.slice(0, 7) + "-01"
+            ? "month"
+            : "custom";
+  return (
+    <div className="date-filter no-print">
+      <select
+        aria-label="Date range preset"
+        value={custom ? "custom" : preset}
+        onChange={(e) => {
+          setCustom(e.target.value === "custom");
+          const end = today();
+          const d = new Date(`${end}T12:00:00Z`);
+          if (e.target.value === "today") setRange(end, end);
+          if (e.target.value === "yesterday") {
+            d.setUTCDate(d.getUTCDate() - 1);
+            setRange(
+              d.toISOString().slice(0, 10),
+              d.toISOString().slice(0, 10),
+            );
+          }
+          if (e.target.value === "week") {
+            d.setUTCDate(d.getUTCDate() - 6);
+            setRange(d.toISOString().slice(0, 10), end);
+          }
+          if (e.target.value === "month")
+            setRange(end.slice(0, 7) + "-01", end);
+        }}
+      >
+        <option value="today">Today</option>
+        <option value="yesterday">Yesterday</option>
+        <option value="week">This week</option>
+        <option value="month">This month</option>
+        <option value="custom">Custom</option>
+      </select>
+      <div
+        className={`date-fields ${custom || preset === "custom" ? "date-fields-open" : ""}`}
+      >
+        <input
+          type="date"
+          aria-label="From date"
+          value={from}
+          max={to}
+          onChange={(e) => e.target.value && setRange(e.target.value, to)}
+        />
+        <span className="muted">–</span>
+        <input
+          type="date"
+          aria-label="To date"
+          value={to}
+          min={from}
+          onChange={(e) => e.target.value && setRange(from, e.target.value)}
+        />
+      </div>
+    </div>
+  );
 }
-export function BatchTable({batches,onSelect}:{batches:Batch[];onSelect:(b:Batch)=>void}) {
- const {data}=useWorkspace(); if(!data)return null;
- return !batches.length?<Empty title="Your next batch starts here" description="Record production to build a traceable history of your factory’s work."/>:<div className="table-wrap"><table><thead><tr><th>BATCH / MATERIAL</th><th>PROCESS</th><th>MACHINE</th><th>NET OUTPUT</th><th>YIELD</th><th>STATUS</th><th/></tr></thead><tbody>{batches.map(b=>{let yieldLabel='—';try{yieldLabel=batchMath(b).yield||'—';}catch{}return <tr className="table-row clickable" key={b.id} onClick={()=>onSelect(b)}><td><div className="cell-icon"><span>{b.process==='grinding'?<Layers3 size={15}/>:<Leaf size={15}/>}</span><div><strong>{b.code}</strong><small>{data.materials.find(m=>m.id===b.outputs[0]?.material_id)?.name||'Material'} · {dateLabel(b.date)}</small></div></div></td><td>{b.process==='grinding'?'Grinding':'Granules'}{b.job_id&&<small>Customer job work</small>}</td><td>{data.machines.find(m=>m.id===b.machine_id)?.name||'—'}</td><td className="num"><strong>{kg(sum(b.outputs.filter(o=>o.kind==='usable').map(o=>o.quantity)).toString())}</strong> <small style={{display:'inline'}}>kg</small></td><td>{yieldLabel}%</td><td><Badge status={b.status}/></td><td><Button size="icon" variant="ghost" aria-label={`Open ${b.code}`} onClick={e=>{e.stopPropagation();onSelect(b);}}><ArrowUpRight size={16}/></Button></td></tr>;})}</tbody></table></div>;
+export function BatchTable({
+  batches,
+  onSelect,
+}: {
+  batches: Batch[];
+  onSelect: (b: Batch) => void;
+}) {
+  const { data } = useWorkspace();
+  if (!data) return null;
+  return !batches.length ? (
+    <Empty
+      title="Your next batch starts here"
+      description="Record production to build a traceable history of your factory’s work."
+    />
+  ) : (
+    <div className="table-wrap">
+      <ResponsiveTable>
+        <thead>
+          <tr>
+            <th>BATCH / MATERIAL</th>
+            <th>PROCESS</th>
+            <th>MACHINE</th>
+            <th>NET OUTPUT</th>
+            <th>YIELD</th>
+            <th>STATUS</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {batches.map((b) => {
+            let yieldLabel = "—";
+            try {
+              yieldLabel = batchMath(b).yield || "—";
+            } catch {}
+            return (
+              <tr
+                className="table-row clickable"
+                key={b.id}
+                onClick={() => onSelect(b)}
+              >
+                <td>
+                  <div className="cell-icon">
+                    <span>
+                      {b.process === "grinding" ? (
+                        <Layers3 size={15} />
+                      ) : (
+                        <Leaf size={15} />
+                      )}
+                    </span>
+                    <div>
+                      <strong>{b.code}</strong>
+                      <small>
+                        {data.materials.find(
+                          (m) => m.id === b.outputs[0]?.material_id,
+                        )?.name || "Material"}{" "}
+                        · {dateLabel(b.date)}
+                      </small>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  {b.process === "grinding" ? "Grinding" : "Granules"}
+                  {b.job_id && <small>Customer job work</small>}
+                </td>
+                <td>
+                  {data.machines.find((m) => m.id === b.machine_id)?.name ||
+                    "—"}
+                </td>
+                <td className="num">
+                  <strong>
+                    {kg(
+                      sum(
+                        b.outputs
+                          .filter((o) => o.kind === "usable")
+                          .map((o) => o.quantity),
+                      ).toString(),
+                    )}
+                  </strong>{" "}
+                  <small style={{ display: "inline" }}>kg</small>
+                </td>
+                <td>{yieldLabel}%</td>
+                <td>
+                  <Badge status={b.status} />
+                </td>
+                <td>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    aria-label={`Open ${b.code}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelect(b);
+                    }}
+                  >
+                    <ArrowUpRight size={16} />
+                    <span className="mobile-only">View batch</span>
+                  </Button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </ResponsiveTable>
+    </div>
+  );
 }
-export function Dashboard({onAction,onBatch}:{onAction:(action:string)=>void;onBatch:(b:Batch)=>void}) {
- const {data,from,to}=useWorkspace();if(!data)return null;
- const approved=data.batches.filter(b=>b.status==='approved');const byProcess=(p:string)=>sum(approved.filter(b=>b.process===p).flatMap(b=>b.outputs.filter(o=>o.kind==='usable').map(o=>o.quantity))).toString();
- const bags=approved.flatMap(b=>b.outputs).flatMap(o=>o.bags).reduce((s,g)=>s+g.count,0);const own=data.lots.filter(l=>!l.owner_party_id);const ownStock=sum(own.map(l=>l.balance)).toString();
- const consumed=sum(approved.flatMap(b=>b.inputs.map(i=>i.quantity))).toString();const dispatched=sum(data.dispatches.filter(d=>d.status==='approved').flatMap(d=>d.lines.map(l=>l.quantity))).toString();const loss=sum(approved.map(b=>b.loss_kg)).toString();
- const chartRows=[];const d=new Date(`${from}T12:00:00Z`);let count=0;while(d.toISOString().slice(0,10)<=to&&count<367){const day=d.toISOString().slice(0,10);chartRows.push({date:day.slice(8)+'/'+day.slice(5,7),grinding:Number(sum(approved.filter(b=>b.date===day&&b.process==='grinding').flatMap(b=>b.outputs.filter(o=>o.kind==='usable').map(o=>o.quantity)))),granules:Number(sum(approved.filter(b=>b.date===day&&b.process==='granules').flatMap(b=>b.outputs.filter(o=>o.kind==='usable').map(o=>o.quantity))))});d.setUTCDate(d.getUTCDate()+1);count++;}
- const metrics=[{label:'Grinding output',value:byProcess('grinding'),unit:'kg',icon:Layers3,foot:'Usable grinding · stage throughput',primary:true},{label:'Granules output',value:byProcess('granules'),unit:'kg',icon:Leaf,foot:'Usable granules · stage throughput'},{label:'Bags produced',value:bags,unit:'bags',icon:Package,foot:`Across ${approved.length} approved batches`},{label:'Company book stock',value:ownStock,unit:'kg',icon:Factory,foot:'Current stock · all material stages'}];
- const quick=[['grinding','Grinding entry',Layers3],['granules','Granules entry',Leaf],['calculator','Bag calculator',Calculator],['inward','Material inward',ArrowDownLeft],['dispatch','Dispatch',Truck],['photo','Capture photo',Camera]] as const;
- return <><PageHeading eyebrow="YOUR FACTORY. IN FOCUS." title="A clearer view of every day." description="From the first weighment to the last bag. Here’s where your factory stands." actions={<Button onClick={()=>onAction('new')}><Plus size={16}/>New entry</Button>}/><div className="section-label"><h2>Let’s get to work</h2><span className="small muted">Less typing. More making.</span></div><div className="quick-actions">{quick.map(([action,label,Icon])=><button className="quick-action" key={action} onClick={()=>onAction(action)}><span><Icon size={18}/></span>{label}</button>)}</div><div className="section-label mobile-stack"><div><h2>Production at a glance</h2><p>Approved records · {dateLabel(from)} to {dateLabel(to)}</p></div><RangeFilter/></div><div className="metrics">{metrics.map(m=><div className={`metric ${m.primary?'primary':''}`} key={m.label}><div className="metric-label">{m.label}<span className="metric-icon"><m.icon size={16}/></span></div><div className="metric-value">{kg(m.value)}<small>{m.unit}</small></div><div className="metric-foot"><span>{m.foot}</span></div></div>)}</div><div className="secondary-metrics"><div><span>MATERIAL CONSUMED · STAGE INPUTS</span><strong>{kg(consumed)}</strong><small>kg</small></div><div><span>DISPATCHED</span><strong>{kg(dispatched)}</strong><small>kg</small></div><div><span>DOCUMENTED PROCESS LOSS</span><strong>{kg(loss)}</strong><small>kg</small></div><div><span>CUSTOMER-OWNED STOCK</span><strong>{kg(sum(data.lots.filter(l=>l.owner_party_id).map(l=>l.balance)).toString())}</strong><small>kg</small></div></div>
- <div className="dashboard-grid"><section className="panel"><div className="panel-head"><div><h2>Material in motion</h2><p>Daily output by process · kilograms</p></div><div className="chart-legend"><span><i className="legend-dot"/>Grinding</span><span><i className="legend-dot light"/>Granules</span></div></div><Chart rows={chartRows}/><div className="panel-footer"><span>Each process is shown separately to avoid double counting.</span><Activity size={14}/></div></section><section className="panel"><div className="panel-head"><div><h2>On the factory floor</h2><p>Machines with recorded production</p></div><Link href="/machines"><ArrowUpRight size={17}/></Link></div><div className="panel-body">{data.machines.length?data.machines.slice(0,4).map(m=>{const amount=sum(approved.filter(b=>b.machine_id===m.id).flatMap(b=>b.outputs.filter(o=>o.kind==='usable').map(o=>o.quantity)));const max=sum(approved.flatMap(b=>b.outputs.filter(o=>o.kind==='usable').map(o=>o.quantity)));return <div className="machine-row" key={m.id}><span className="machine-avatar"><Factory size={18}/></span><div className="machine-info"><div className="row"><h3>{m.name}</h3><span className="machine-output">{kg(amount.toString())}<small> kg</small></span></div><p>{m.category} · <span>{m.status}</span></p><div className="progress-track"><span style={{width:`${max.gt(0)?amount.div(max).times(100):0}%`}}/></div></div></div>;}):<Empty title="Add your first machine" description="Use actual machine names and configurations in Settings."/>}</div><div className="panel-footer"><span>{new Set(approved.map(b=>b.machine_id)).size} machines · {new Set(approved.map(b=>b.shift_id)).size} shifts with output</span><ChevronRight size={14}/></div></section></div>
- <div className="dashboard-grid"><section className="panel"><div className="panel-head" style={{paddingBottom:19}}><div><h2>The latest on the line</h2><p>Recent production batches</p></div><Link className="small" href="/production">View history ↗</Link></div><BatchTable batches={data.batches.slice(0,5)} onSelect={onBatch}/></section><section className="panel"><div className="panel-head"><div><h2>Attention & activity</h2><p>Stay one step ahead</p></div></div><div className="panel-body"><div className="notice" style={{marginBottom:24}}><div className="row"><strong className="small">{data.batches.filter(b=>b.status==='submitted').length} batches awaiting approval</strong><Link href="/production"><ArrowUpRight size={15}/></Link></div><p className="small">{data.lots.filter(l=>l.qc==='hold'&&Number(l.balance)>0).length} lots need a quality review</p></div><div className="timeline">{data.audit.slice(0,4).map(a=><div className="timeline-item" key={a.id}><strong>{a.action.replaceAll('_',' ')}</strong><p>{dateLabel(a.created_at)} · {a.detail}</p></div>)}{!data.audit.length&&<p className="small">Your operational activity will appear here.</p>}</div></div></section></div></>;
+export function Dashboard({
+  onAction,
+  onBatch,
+}: {
+  onAction: (action: string) => void;
+  onBatch: (b: Batch) => void;
+}) {
+  const { data, from, to } = useWorkspace();
+  const wide = useWideScreen();
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  if (!data) return null;
+  const approved = data.batches.filter((b) => b.status === "approved");
+  const byProcess = (p: string) =>
+    sum(
+      approved
+        .filter((b) => b.process === p)
+        .flatMap((b) =>
+          b.outputs.filter((o) => o.kind === "usable").map((o) => o.quantity),
+        ),
+    ).toString();
+  const bags = approved
+    .flatMap((b) => b.outputs)
+    .flatMap((o) => o.bags)
+    .reduce((s, g) => s + g.count, 0);
+  const own = data.lots.filter((l) => !l.owner_party_id);
+  const ownStock = sum(own.map((l) => l.balance)).toString();
+  const consumed = sum(
+    approved.flatMap((b) => b.inputs.map((i) => i.quantity)),
+  ).toString();
+  const dispatched = sum(
+    data.dispatches
+      .filter((d) => d.status === "approved")
+      .flatMap((d) => d.lines.map((l) => l.quantity)),
+  ).toString();
+  const loss = sum(approved.map((b) => b.loss_kg)).toString();
+  const chartRows = [];
+  const d = new Date(`${from}T12:00:00Z`);
+  let count = 0;
+  while (d.toISOString().slice(0, 10) <= to && count < 367) {
+    const day = d.toISOString().slice(0, 10);
+    chartRows.push({
+      date: day.slice(8) + "/" + day.slice(5, 7),
+      grinding: Number(
+        sum(
+          approved
+            .filter((b) => b.date === day && b.process === "grinding")
+            .flatMap((b) =>
+              b.outputs
+                .filter((o) => o.kind === "usable")
+                .map((o) => o.quantity),
+            ),
+        ),
+      ),
+      granules: Number(
+        sum(
+          approved
+            .filter((b) => b.date === day && b.process === "granules")
+            .flatMap((b) =>
+              b.outputs
+                .filter((o) => o.kind === "usable")
+                .map((o) => o.quantity),
+            ),
+        ),
+      ),
+    });
+    d.setUTCDate(d.getUTCDate() + 1);
+    count++;
+  }
+  const metrics = [
+    {
+      label: "Grinding output",
+      value: byProcess("grinding"),
+      unit: "kg",
+      icon: Layers3,
+      foot: "Usable grinding · stage throughput",
+      primary: true,
+    },
+    {
+      label: "Granules output",
+      value: byProcess("granules"),
+      unit: "kg",
+      icon: Leaf,
+      foot: "Usable granules · stage throughput",
+    },
+    {
+      label: "Bags produced",
+      value: bags,
+      unit: "bags",
+      icon: Package,
+      foot: `Across ${approved.length} approved batches`,
+    },
+    {
+      label: "Company book stock",
+      value: ownStock,
+      unit: "kg",
+      icon: Factory,
+      foot: "Current stock · all material stages",
+    },
+  ];
+  const quick = [
+    ["grinding", "Grinding entry", Layers3],
+    ["granules", "Granules entry", Leaf],
+    ["calculator", "Bag calculator", Calculator],
+    ["inward", "Material inward", ArrowDownLeft],
+    ["dispatch", "Dispatch", Truck],
+    ["photo", "Capture photo", Camera],
+  ] as const;
+  return (
+    <div className="dashboard-page">
+      <PageHeading
+        eyebrow="YOUR FACTORY. IN FOCUS."
+        title="Your factory, in focus."
+        description="From the first weighment to the last bag. Here’s where your factory stands."
+        actions={
+          <Button onClick={() => onAction("new")}>
+            <Plus size={16} />
+            New entry
+          </Button>
+        }
+      />
+      <div className="section-label">
+        <h2>Record your work</h2>
+        <span className="small muted">Less typing. More making.</span>
+      </div>
+      <div className="quick-actions">
+        {quick.map(([action, label, Icon]) => (
+          <button
+            className="quick-action"
+            key={action}
+            onClick={() => onAction(action)}
+          >
+            <span>
+              <Icon size={18} />
+            </span>
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="section-label mobile-stack">
+        <div>
+          <h2>Production at a glance</h2>
+          <p>
+            Approved records · {dateLabel(from)} to {dateLabel(to)}
+          </p>
+        </div>
+        <RangeFilter />
+      </div>
+      <div className="metrics">
+        {metrics.map((m) => (
+          <div className={`metric ${m.primary ? "primary" : ""}`} key={m.label}>
+            <div className="metric-label">
+              {m.label}
+              <span className="metric-icon">
+                <m.icon size={16} />
+              </span>
+            </div>
+            <div className="metric-value">
+              {kg(m.value)}
+              <small>{m.unit}</small>
+            </div>
+            <div className="metric-foot">
+              <span>{m.foot}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="secondary-metrics">
+        <div>
+          <span>MATERIAL CONSUMED · STAGE INPUTS</span>
+          <strong>{kg(consumed)}</strong>
+          <small>kg</small>
+        </div>
+        <div>
+          <span>DISPATCHED</span>
+          <strong>{kg(dispatched)}</strong>
+          <small>kg</small>
+        </div>
+        <div>
+          <span>DOCUMENTED PROCESS LOSS</span>
+          <strong>{kg(loss)}</strong>
+          <small>kg</small>
+        </div>
+        <div>
+          <span>CUSTOMER-OWNED STOCK</span>
+          <strong>
+            {kg(
+              sum(
+                data.lots.filter((l) => l.owner_party_id).map((l) => l.balance),
+              ).toString(),
+            )}
+          </strong>
+          <small>kg</small>
+        </div>
+      </div>
+      <section className="dashboard-analytics">
+        <button
+          className="mobile-analytics-toggle"
+          aria-expanded={analyticsOpen}
+          onClick={() => setAnalyticsOpen(!analyticsOpen)}
+        >
+          <span>
+            <Activity size={19} /> Trends & machine output
+          </span>
+          <Plus
+            size={20}
+            style={{ transform: analyticsOpen ? "rotate(45deg)" : undefined }}
+          />
+        </button>
+        <div
+          className={`dashboard-grid ${analyticsOpen ? "analytics-open" : "analytics-collapsed"}`}
+        >
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <h2>Material in motion</h2>
+                <p>Daily output by process · kilograms</p>
+              </div>
+              <div className="chart-legend">
+                <span>
+                  <i className="legend-dot" />
+                  Grinding
+                </span>
+                <span>
+                  <i className="legend-dot light" />
+                  Granules
+                </span>
+              </div>
+            </div>
+            {(wide || analyticsOpen) && <Chart rows={chartRows} />}
+            <div className="panel-footer">
+              <span>
+                Each process is shown separately to avoid double counting.
+              </span>
+              <Activity size={14} />
+            </div>
+          </section>
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <h2>On the factory floor</h2>
+                <p>Machines with recorded production</p>
+              </div>
+              <Link href="/machines">
+                <ArrowUpRight size={17} />
+              </Link>
+            </div>
+            <div className="panel-body">
+              {data.machines.length ? (
+                data.machines.slice(0, 4).map((m) => {
+                  const amount = sum(
+                    approved
+                      .filter((b) => b.machine_id === m.id)
+                      .flatMap((b) =>
+                        b.outputs
+                          .filter((o) => o.kind === "usable")
+                          .map((o) => o.quantity),
+                      ),
+                  );
+                  const max = sum(
+                    approved.flatMap((b) =>
+                      b.outputs
+                        .filter((o) => o.kind === "usable")
+                        .map((o) => o.quantity),
+                    ),
+                  );
+                  return (
+                    <div className="machine-row" key={m.id}>
+                      <span className="machine-avatar">
+                        <Factory size={18} />
+                      </span>
+                      <div className="machine-info">
+                        <div className="row">
+                          <h3>{m.name}</h3>
+                          <span className="machine-output">
+                            {kg(amount.toString())}
+                            <small> kg</small>
+                          </span>
+                        </div>
+                        <p>
+                          {m.category} · <span>{m.status}</span>
+                        </p>
+                        <div className="progress-track">
+                          <span
+                            style={{
+                              width: `${max.gt(0) ? amount.div(max).times(100) : 0}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <Empty
+                  title="Add your first machine"
+                  description="Use actual machine names and configurations in Settings."
+                />
+              )}
+            </div>
+            <div className="panel-footer">
+              <span>
+                {new Set(approved.map((b) => b.machine_id)).size} machines ·{" "}
+                {new Set(approved.map((b) => b.shift_id)).size} shifts with
+                output
+              </span>
+              <ChevronRight size={14} />
+            </div>
+          </section>
+        </div>
+      </section>
+      <div className="dashboard-grid dashboard-recent">
+        <section className="panel">
+          <div className="panel-head" style={{ paddingBottom: 19 }}>
+            <div>
+              <h2>The latest on the line</h2>
+              <p>Recent production batches</p>
+            </div>
+            <Link className="small" href="/production">
+              View history ↗
+            </Link>
+          </div>
+          <BatchTable batches={data.batches.slice(0, 5)} onSelect={onBatch} />
+        </section>
+        <section className="panel">
+          <div className="panel-head">
+            <div>
+              <h2>Attention & activity</h2>
+              <p>Stay one step ahead</p>
+            </div>
+          </div>
+          <div className="panel-body">
+            <div className="notice" style={{ marginBottom: 24 }}>
+              <div className="row">
+                <strong className="small">
+                  {data.batches.filter((b) => b.status === "submitted").length}{" "}
+                  batches awaiting approval
+                </strong>
+                <Link href="/production">
+                  <ArrowUpRight size={15} />
+                </Link>
+              </div>
+              <p className="small">
+                {
+                  data.lots.filter(
+                    (l) => l.qc === "hold" && Number(l.balance) > 0,
+                  ).length
+                }{" "}
+                lots need a quality review
+              </p>
+            </div>
+            <div className="timeline">
+              {data.audit.slice(0, 4).map((a) => (
+                <div className="timeline-item" key={a.id}>
+                  <strong>{a.action.replaceAll("_", " ")}</strong>
+                  <p>
+                    {dateLabel(a.created_at)} · {a.detail}
+                  </p>
+                </div>
+              ))}
+              {!data.audit.length && (
+                <p className="small">
+                  Your operational activity will appear here.
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
 }
