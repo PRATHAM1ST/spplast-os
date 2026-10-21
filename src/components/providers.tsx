@@ -19,6 +19,7 @@ import { toast, Toaster } from "sonner";
 import { local, unlock, lock, read, seal } from "@/lib/offline/vault";
 import { fetchJSON, synchronize, RequestError } from "@/lib/offline/sync";
 import { authClient } from "@/lib/auth/client";
+import { authErrorMessage } from "@/lib/auth/errors";
 import {
   defaultSettings,
   type Command,
@@ -338,7 +339,10 @@ function SessionGate({ children }: { children: ReactNode }) {
                   email,
                   otp,
                 });
-                if (result.error) throw new Error(result.error.message);
+                if (result.error)
+                  throw new Error(
+                    authErrorMessage(result.error, window.location.origin),
+                  );
                 toast.success("Email verified. Sign in to continue.");
                 setSignup(false);
                 setOtp("");
@@ -362,7 +366,10 @@ function SessionGate({ children }: { children: ReactNode }) {
                     callbackURL: window.location.origin + "/",
                   })
                 : await authClient.signIn.email({ email, password });
-              if (response.error) throw new Error(response.error.message);
+              if (response.error)
+                throw new Error(
+                  authErrorMessage(response.error, window.location.origin),
+                );
               if (
                 signup &&
                 response.data?.user &&
@@ -464,7 +471,10 @@ function SessionGate({ children }: { children: ReactNode }) {
                     email,
                     redirectTo: window.location.origin + "/reset-password",
                   });
-                  if (result.error) throw new Error(result.error.message);
+                  if (result.error)
+                    throw new Error(
+                      authErrorMessage(result.error, window.location.origin),
+                    );
                   toast.info(
                     "If this account exists, a password reset email will arrive shortly.",
                   );
@@ -486,7 +496,9 @@ function SessionGate({ children }: { children: ReactNode }) {
                 callbackURL: window.location.origin + "/",
               });
               if (result.error)
-                setError(result.error.message || "Unable to resend");
+                setError(
+                  authErrorMessage(result.error, window.location.origin),
+                );
               else toast.info("Verification email requested");
             }}
           >

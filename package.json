@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev --webpack",
     "dev:phone": "node scripts/phone-preview.mjs",
+    "auth:check-origin": "node scripts/check-auth-origin.mjs",
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint .",

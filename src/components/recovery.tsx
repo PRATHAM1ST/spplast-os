@@ -2,6 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { authClient } from "@/lib/auth/client";
+import { authErrorMessage } from "@/lib/auth/errors";
 import { Button } from "./ui/button";
 import { Field } from "./ui/common";
 export function PasswordRecovery() {
@@ -33,7 +34,10 @@ export function PasswordRecovery() {
               newPassword: password,
               token,
             });
-            if (result.error) throw new Error(result.error.message);
+            if (result.error)
+              throw new Error(
+                authErrorMessage(result.error, window.location.origin),
+              );
             setPassword("");
             setMessage("Password updated. Return to sign in.");
           } catch (e) {

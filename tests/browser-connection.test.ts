@@ -1,7 +1,29 @@
 import { expect, test, vi, afterEach } from "vitest";
 import { randomId } from "@/lib/browser-crypto";
 import { acceptsOrigin } from "@/lib/request-origin";
+import { authErrorMessage } from "@/lib/auth/errors";
 afterEach(() => vi.unstubAllGlobals());
+
+test("provider origin rejection identifies the exact address without masking credential errors", () => {
+  expect(
+    authErrorMessage(
+      { code: "INVALID_ORIGIN", message: "Invalid origin" },
+      "https://192.168.1.6:3443",
+    ),
+  ).toContain("https://192.168.1.6:3443");
+  expect(
+    authErrorMessage({ message: "Invalid origin" }, "https://factory.example"),
+  ).toContain("Configuration → Domains");
+  expect(
+    authErrorMessage(
+      {
+        code: "INVALID_EMAIL_OR_PASSWORD",
+        message: "Invalid email or password",
+      },
+      "https://factory.example",
+    ),
+  ).toBe("Invalid email or password");
+});
 test("UUIDs remain valid with only the entropy API available on LAN HTTP", () => {
   const entropy = crypto.getRandomValues.bind(crypto);
   vi.stubGlobal("crypto", { getRandomValues: entropy });
