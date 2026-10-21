@@ -25,6 +25,7 @@ export async function POST(request: Request) {
         "dispatch",
         "inspection",
         "machine",
+        "entry",
       ])
       .parse(form.get("record_type"));
     const file = form.get("file");
@@ -42,10 +43,11 @@ export async function POST(request: Request) {
       dispatch: "dispatches",
       inspection: "inspections",
       machine: "machines",
+      entry: "simple_entries",
     };
     const records = await query(
       user,
-      `select id from app.${tables[type]} where id=$1 and org_id=$2 and private.allowed($2,'operate')`,
+      `select id from app.${tables[type]} where id=$1 and org_id=$2 and private.allowed($2,'operate')${type === "entry" ? " and not deleted" : ""}`,
       [record, org],
     );
     if (!records.length)

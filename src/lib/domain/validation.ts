@@ -81,12 +81,16 @@ export const commandSchema = z.object({
     "membership",
     "lock_day",
     "media",
+    "save_entry",
+    "delete_entry",
   ]),
   payload: z.record(z.string(), z.unknown()),
   expected_version: z.number().int().nonnegative().optional(),
 });
 export function validateCommand(value: unknown) {
   const c = commandSchema.parse(value);
+  if (c.action === "save_entry") c.payload = simpleEntrySchema.parse(c.payload);
+  if (c.action === "delete_entry") c.payload = z.object({ id }).parse(c.payload);
   if (c.action === "save_batch") c.payload = batchSchema.parse(c.payload);
   if (c.action === "master") {
     const field = z.object({
@@ -178,3 +182,16 @@ export function validateCommand(value: unknown) {
       .parse(c.payload);
   return c;
 }
+export const simpleEntrySchema = z.object({
+  id,
+  kind: z.enum(["scrap", "grinding", "granules", "sale"]),
+  date: z.iso.date(),
+  name: z.string().trim().min(1).max(150),
+  color: z.string().max(100),
+  color_hex: z.string().regex(/^#[a-fA-F0-9]{6}$/),
+  quantity: quantity.refine((v) => Number(v)>0, "Enter a weight greater than zero"),
+  bags: z.array(z.object({ count: z.number().int().min(1).max(100000), weight: quantity.refine((v)=>Number(v)>0) })).max(100),
+  input_lot_id: id.nullable(),
+  input_quantity: quantity,
+  remove_photo_ids: z.array(id).max(100).default([]),
+});

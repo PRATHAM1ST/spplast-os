@@ -722,7 +722,7 @@ function WorkspaceProvider({
   );
   const loadMore = async () => {
     const offset = Math.max(
-      ...["batches", "lots", "movements", "materials"].map(
+      ...["batches", "lots", "movements", "materials", "simple_entries", "simple_stock"].map(
         (k) =>
           (query.data?.[k as keyof Workspace] as unknown[] | undefined)
             ?.length || 0,

@@ -236,6 +236,9 @@ export interface Settings {
   }[];
 }
 export interface Workspace {
+  simple_entries?: SimpleEntry[];
+  simple_stock?: StockItem[];
+  stock_totals?: Partial<Record<EntryKind, string>>;
   org_id: string;
   materials: Material[];
   parties: Party[];
@@ -255,6 +258,24 @@ export interface Workspace {
   settings: Settings;
   locked_days: string[];
   has_more: boolean;
+}
+export type EntryKind = "scrap" | "grinding" | "granules" | "sale";
+export interface SimpleBag { count: number; weight: string }
+export interface SimpleEntry extends Base {
+  kind: EntryKind;
+  date: string;
+  name: string;
+  color: string;
+  color_hex: string;
+  quantity: string;
+  bags: SimpleBag[];
+  input_lot_id: string | null;
+  input_quantity: string;
+  deleted: boolean;
+}
+export interface StockItem {
+  id: string; code: string; name: string; color: string; color_hex: string;
+  form: string; qc: QC; quantity: string;
 }
 export interface Session {
   user_id: string;
