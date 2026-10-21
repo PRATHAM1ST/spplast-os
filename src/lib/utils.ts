@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { randomId } from "./browser-crypto";
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -31,7 +32,7 @@ export function dateLabel(value: string) {
   }).format(new Date(value.length === 10 ? `${value}T12:00:00+05:30` : value));
 }
 export function uid() {
-  return crypto.randomUUID();
+  return randomId();
 }
 export function indiaDateTime(value: string | null | undefined) {
   if (!value) return "";

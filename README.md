@@ -15,6 +15,12 @@ npm run dev
 
 Open http://localhost:3000. With no credentials, choose **Explore the demo factory**. Records persist in this browser. All demonstration machines, customer names and formula quantities are fictional. The demo is removable from Settings → Demo; never enter real factory records in it.
 
+### Test on a phone over Wi-Fi (Windows)
+
+Keep `npm run dev` running and start `npm run dev:phone` in a second terminal. Open the printed **HTTPS** address on a phone connected to the same Wi-Fi, for example `https://192.168.1.6:3443`. `localhost` on a phone refers to the phone itself. Plain HTTP at a LAN IP cannot provide the encryption, camera and service-worker APIs this app needs.
+
+The helper creates a temporary development certificate without changing system trust. A test browser may show a certificate warning. For trusted HTTPS and PWA testing, transfer only `.local-phone/development-ca.cer` to your own test device and install/trust that development CA in its certificate settings (iOS also requires enabling full trust). The same public certificate is downloadable from `/__development-ca.cer` on the HTTPS preview. Never share `.local-phone/phone.pfx` or its password. All these files are gitignored. Use a publicly trusted HTTPS certificate for deployment, not this local preview. The preview proxies port 3443 to the existing development server on port 3000, including hot reload; it does not publish the application to the internet.
+
 For installation and offline testing, run the production build; the service worker is deliberately disabled in development:
 
 ```powershell

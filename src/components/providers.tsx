@@ -60,6 +60,14 @@ export function useWorkspace() {
 }
 export function Providers({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const [connection, setConnection] = useState<"checking" | "secure" | "http">(
+    "checking",
+  );
+  useEffect(() => {
+    setConnection(
+      window.isSecureContext && !!crypto.subtle ? "secure" : "http",
+    );
+  }, []);
   const [client] = useState(
     () =>
       new QueryClient({
@@ -70,7 +78,35 @@ export function Providers({ children }: { children: ReactNode }) {
   );
   return (
     <QueryClientProvider client={client}>
-      {pathname === "/reset-password" ? (
+      {connection === "checking" ? (
+        <Loading label="Opening SP Plast OS…" />
+      ) : connection === "http" ? (
+        <main
+          className="auth-form"
+          style={{ maxWidth: 560, margin: "8vh auto" }}
+        >
+          <div className="eyebrow">SP PLAST OS · PHONE CONNECTION</div>
+          <h1>Use the secure address.</h1>
+          <p>
+            Your phone reached the factory server. This HTTP address cannot
+            unlock encrypted drafts, use the camera or install the app.
+          </p>
+          {process.env.NODE_ENV === "development" && (
+            <a
+              className="btn full"
+              href={`https://${window.location.hostname}:3443${window.location.pathname}`}
+            >
+              Open secure phone preview <ArrowUpRight size={18} />
+            </a>
+          )}
+          <p className="small">
+            For local development, run <code>npm run dev:phone</code> on the PC
+            alongside the development server. Use the HTTPS address it prints. A
+            local development certificate needs to be trusted on your phone; a
+            deployed factory address should have a publicly trusted certificate.
+          </p>
+        </main>
+      ) : pathname === "/reset-password" ? (
         <PasswordRecovery />
       ) : (
         <SessionGate>{children}</SessionGate>

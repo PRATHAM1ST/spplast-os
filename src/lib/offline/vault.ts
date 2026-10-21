@@ -37,6 +37,10 @@ export const local = new LocalDB();
 let vaultKey: CryptoKey | null = null;
 let vaultUser = "";
 export async function unlock(user: string, passphrase: string) {
+  if (!globalThis.crypto?.subtle)
+    throw new Error(
+      "Open SP Plast OS over HTTPS to use encrypted local storage on this device.",
+    );
   let salt = (await local.keys.get(user))?.salt;
   if (!salt) {
     salt = crypto.getRandomValues(new Uint8Array(16));

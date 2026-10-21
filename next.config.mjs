@@ -1,4 +1,5 @@
 import withSerwistInit from "@serwist/next";
+import { networkInterfaces } from "node:os";
 const withSerwist = withSerwistInit({
   swSrc: "src/app/sw.ts",
   swDest: "public/sw.js",
@@ -13,7 +14,10 @@ const withSerwist = withSerwistInit({
   ],
 });
 export default withSerwist({
-  allowedDevOrigins: ["192.168.1.6"],
+  allowedDevOrigins: Object.values(networkInterfaces())
+    .flat()
+    .filter((a) => a?.family === "IPv4" && !a.internal)
+    .map((a) => a.address),
   transpilePackages: ["@electric-sql/pglite"],
   webpack(config, { isServer, webpack }) {
     if (!isServer) {
