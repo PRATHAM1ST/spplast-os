@@ -260,7 +260,10 @@ export interface Workspace {
   has_more: boolean;
 }
 export type EntryKind = "scrap" | "grinding" | "granules" | "sale";
-export interface SimpleBag { count: number; weight: string }
+export interface SimpleBag {
+  count: number;
+  weight: string;
+}
 export interface SimpleEntry extends Base {
   kind: EntryKind;
   date: string;
@@ -274,8 +277,14 @@ export interface SimpleEntry extends Base {
   deleted: boolean;
 }
 export interface StockItem {
-  id: string; code: string; name: string; color: string; color_hex: string;
-  form: string; qc: QC; quantity: string;
+  id: string;
+  code: string;
+  name: string;
+  color: string;
+  color_hex: string;
+  form: string;
+  qc: QC;
+  quantity: string;
 }
 export interface Session {
   user_id: string;

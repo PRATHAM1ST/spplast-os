@@ -77,11 +77,17 @@ export async function POST(request: Request) {
     const digest = createHash("sha256").update(main).digest("hex");
     const path = `${org}/${record}/${id}-${digest}.webp`;
     const thumbnail_path = `${org}/${record}/${id}-${digest}-thumb.webp`;
-    const existing = await query<{path: string; record_id: string}>(user,
-      "select path,record_id from app.media where id=$1 and org_id=$2", [id, org]);
+    const existing = await query<{ path: string; record_id: string }>(
+      user,
+      "select path,record_id from app.media where id=$1 and org_id=$2",
+      [id, org],
+    );
     if (existing.length) {
-      if (existing[0].path !== path || existing[0].record_id !== record) throw new Error("CONFLICT: This photo identifier already belongs to another image");
-      return Response.json({id, status: "saved"});
+      if (existing[0].path !== path || existing[0].record_id !== record)
+        throw new Error(
+          "CONFLICT: This photo identifier already belongs to another image",
+        );
+      return Response.json({ id, status: "saved" });
     }
     await Promise.all([
       client.send(

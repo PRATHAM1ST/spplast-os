@@ -33,18 +33,20 @@ test("HTTPS phone preview unlocks encrypted storage and retains a bag draft", as
   ).toBe(true);
   await page.getByRole("button", { name: "Explore the demo factory" }).click();
   await expect(
-    page.getByRole("heading", { name: "Your factory, in focus." }),
+    page.getByRole("heading", { name: "What’s in stock" }),
   ).toBeVisible({ timeout: 90000 });
   await page
-    .locator(".mobile-nav")
-    .getByRole("link", { name: "Calculator", exact: true })
+    .getByRole("button", { name: "Grinding output", exact: true })
     .click();
-  await page.getByRole("button", { name: "+ 30 kg", exact: true }).click();
-  await page.getByLabel("Bag count 1", { exact: true }).fill("18");
-  await page.getByRole("button", { name: "Save bag draft" }).click();
+  await page.getByRole("button", { name: "30 kg bags", exact: true }).click();
+  await page.getByLabel("Bags 1", { exact: true }).fill("18");
+  await page.getByRole("button", { name: "Close", exact: true }).last().click();
+  await expect(page.getByRole("dialog")).toBeHidden();
   await page.reload();
-  await page.getByRole("button", { name: "Load draft", exact: true }).click();
-  await expect(page.getByTestId("bag-total")).toContainText("540");
+  await page
+    .getByRole("button", { name: "Grinding output", exact: true })
+    .click();
+  await expect(page.locator(".simple-weight-total")).toContainText("540");
   await page.screenshot({ path: "test-results/phone-https-390.png" });
   expect(errors).toEqual([]);
 });

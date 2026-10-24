@@ -152,3 +152,26 @@ test("retry backoff is bounded", () => {
   expect(retryDelay(1)).toBe(2000);
   expect(retryDelay(20)).toBe(300000);
 });
+test("successful commands remain pending until the refreshed version is available", async () => {
+  const id = crypto.randomUUID();
+  await seal(id, "queue", {
+    id,
+    org_id: crypto.randomUUID(),
+    action: "save_entry",
+    payload: {},
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ status: "saved" }))),
+  );
+  let refreshed = false;
+  await synchronize("worker", async () => {
+    expect(await local.rows.get(id)).toBeDefined();
+    await Promise.resolve();
+    refreshed = true;
+  });
+  expect(refreshed).toBe(true);
+  expect(await local.rows.get(id)).toBeUndefined();
+});

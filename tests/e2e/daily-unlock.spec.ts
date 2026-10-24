@@ -1,6 +1,10 @@
 import { test, expect } from "@playwright/test";
 import { emptyWorkspace } from "../../src/lib/domain/types";
 
+// This test mocks authentication. Service-worker requests bypass page.route;
+// offline/service-worker behaviour is covered separately in offline.spec.ts.
+test.use({ serviceWorkers: "block" });
+
 test("device asks once today, restores after reload, and asks again after expiry", async ({
   page,
 }) => {
@@ -31,11 +35,11 @@ test("device asks once today, restores after reload, and asks again after expiry
     .getByRole("button", { name: "Unlock device", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Your factory, in focus." }),
+    page.getByRole("heading", { name: "What’s in stock" }),
   ).toBeVisible();
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: "Your factory, in focus." }),
+    page.getByRole("heading", { name: "What’s in stock" }),
   ).toBeVisible();
   await expect(
     page.getByLabel("Device passphrase", { exact: true }),

@@ -37,7 +37,7 @@ export const retryDelay = (attempts: number) =>
 let running = false;
 export async function synchronize(
   user: string,
-  onChange: () => void,
+  onChange: () => void | Promise<void>,
   demo?: (c: Command) => Promise<unknown>,
   force = false,
 ) {
@@ -102,10 +102,12 @@ export async function synchronize(
             await fetchJSON("/api/media", { method: "POST", body: form });
           }
         }
+        // Keep the optimistic command until the refreshed server version is visible.
+        // Otherwise a fast follow-up edit/delete can reuse the preceding version.
+        await onChange();
         if (demo && row.kind === "photo")
           await local.rows.update(row.id, { state: "synced" });
         else await local.rows.delete(row.id);
-        onChange();
       } catch (e) {
         const message = e instanceof Error ? e.message : "Sync failed";
         const status =
@@ -126,7 +128,7 @@ export async function synchronize(
           retryAt: Date.now() + retryDelay(row.attempts + 1),
           error: message,
         });
-        onChange();
+        await onChange();
         // Preserve dependency order: never send photos or approvals before their draft exists.
         break;
       }

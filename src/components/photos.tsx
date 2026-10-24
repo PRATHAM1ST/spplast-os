@@ -71,9 +71,11 @@ export async function queuePhotos(
 export function PhotoPicker({
   files,
   onChange,
+  onBusyChange,
 }: {
   files: File[];
   onChange: (files: File[]) => void;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const [previews, setPreviews] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -103,6 +105,7 @@ export function PhotoPicker({
           onChange={async (e) => {
             const selected = Array.from(e.target.files || []);
             setBusy(true);
+            onBusyChange?.(true);
             try {
               const next = await Promise.all(
                 selected.slice(0, 8 - files.length).map(compressPhoto),
@@ -112,6 +115,7 @@ export function PhotoPicker({
               toast.error((e as Error).message);
             } finally {
               setBusy(false);
+              onBusyChange?.(false);
               e.target.value = "";
             }
           }}

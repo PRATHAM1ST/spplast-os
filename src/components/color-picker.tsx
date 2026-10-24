@@ -10,11 +10,13 @@ export function ColorPicker({
   onFilesChange,
   value,
   onChange,
+  onBusyChange,
 }: {
   files: File[];
   onFilesChange: (files: File[]) => void;
   value: ColorReference | null;
   onChange: (color: ColorReference) => void;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const [suggestions, setSuggestions] = useState<ColorReference[]>([]);
   const [error, setError] = useState("");
@@ -106,7 +108,11 @@ export function ColorPicker({
         Take a close-up, then tap a suggested colour. The photo is attached when
         you save.
       </p>
-      <PhotoPicker files={files} onChange={onFilesChange} />
+      <PhotoPicker
+        files={files}
+        onChange={onFilesChange}
+        onBusyChange={onBusyChange}
+      />
       {!!files.length && (
         <div className="photo-color-sample">
           {files.length > 1 && (

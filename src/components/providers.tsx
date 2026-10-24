@@ -661,7 +661,7 @@ function WorkspaceProvider({
     },
   });
   const refresh = useCallback(() => {
-    void qc.invalidateQueries({ queryKey: ["workspace", session.user_id] });
+    return qc.invalidateQueries({ queryKey: ["workspace", session.user_id] });
   }, [qc, session.user_id]);
   const sync = useCallback(async () => {
     const demo = session.demo
@@ -722,7 +722,14 @@ function WorkspaceProvider({
   );
   const loadMore = async () => {
     const offset = Math.max(
-      ...["batches", "lots", "movements", "materials", "simple_entries", "simple_stock"].map(
+      ...[
+        "batches",
+        "lots",
+        "movements",
+        "materials",
+        "simple_entries",
+        "simple_stock",
+      ].map(
         (k) =>
           (query.data?.[k as keyof Workspace] as unknown[] | undefined)
             ?.length || 0,

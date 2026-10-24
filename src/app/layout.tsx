@@ -7,11 +7,12 @@ import "@fontsource/instrument-serif/400.css";
 import "@fontsource/instrument-serif/400-italic.css";
 import "./globals.css";
 import "./mobile.css";
+import "./simple.css";
 import { Providers } from "@/components/providers";
 export const metadata: Metadata = {
-  title: "SP Plast OS | Factory Production & Material Intelligence",
+  title: "SP Plast | Stock & Production",
   description:
-    "The factory, connected. Production, stock, color recipes and material traceability for SP Plast Industries.",
+    "Simple scrap, grinding and granules stock. Record bags, colours and photos.",
   applicationName: "SP Plast OS",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
