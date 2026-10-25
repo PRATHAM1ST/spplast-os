@@ -17,6 +17,7 @@
     "db:migrate": "node scripts/migrate.mjs",
     "db:bundle": "node scripts/bundle-sql.mjs",
     "db:check": "node scripts/check-neon.mjs",
+    "check:live": "node scripts/check-live.mjs",
     "db:provision-runtime": "node scripts/provision-runtime.mjs"
   },
   "engines": {

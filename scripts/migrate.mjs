@@ -1,5 +1,8 @@
 import { readdir, readFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import {
+  migrationChecksum,
+  matchesMigrationChecksum,
+} from "./migration-checksum.mjs";
 import postgres from "postgres";
 import nextEnv from "@next/env";
 nextEnv.loadEnvConfig(process.cwd());
@@ -15,11 +18,11 @@ try {
     .filter((n) => n.endsWith(".sql"))
     .sort()) {
     const source = await readFile(`db/migrations/${name}`, "utf8");
-    const checksum = createHash("sha256").update(source).digest("hex");
+    const checksum = migrationChecksum(source);
     const existing =
       await sql`select checksum from public.spplast_migrations where name=${name}`;
     if (existing.length) {
-      if (existing[0].checksum !== checksum)
+      if (!matchesMigrationChecksum(source, existing[0].checksum))
         throw new Error(`Applied migration changed: ${name}`);
       continue;
     }

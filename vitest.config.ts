@@ -3,7 +3,7 @@ import path from "node:path";
 export default defineConfig({
   resolve: { alias: { "@": path.resolve(__dirname, "src") } },
   test: {
-    include: ["tests/**/*.test.ts"],
+    include: ["tests/**/*.test.{ts,mjs}"],
     testTimeout: 30000,
     hookTimeout: 60000,
     pool: "forks",

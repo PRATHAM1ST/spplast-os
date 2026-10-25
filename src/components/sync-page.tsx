@@ -8,6 +8,7 @@ import { Button } from "./ui/button";
 import { Badge, Empty, PageHeading } from "./ui/common";
 import { toast } from "sonner";
 import type { Command } from "@/lib/domain/types";
+import { isOriginFailure } from "@/lib/offline/sync";
 export function SyncPage() {
   const { session, sync, online } = useWorkspace();
   const [details, setDetails] = useState<Record<string, string>>({});
@@ -128,7 +129,7 @@ export function SyncPage() {
                     <Download size={13} />
                     Export private copy
                   </Button>
-                  {r.state === "conflict" ? (
+                  {r.state === "conflict" && !isOriginFailure(r.error) ? (
                     <>
                       <Button
                         variant="outline"

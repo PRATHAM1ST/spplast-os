@@ -122,6 +122,72 @@ test("conflict is retained, never silently overwritten", async () => {
   await synchronize("worker", () => {}, undefined, true);
   expect(fetch).toHaveBeenCalledTimes(1);
 });
+
+test("origin setup failures retry after configuration is fixed", async () => {
+  const id = crypto.randomUUID();
+  await seal(id, "queue", {
+    id,
+    org_id: crypto.randomUUID(),
+    action: "save_entry",
+    payload: {},
+  });
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ error: "FORBIDDEN: Invalid request origin" }),
+        { status: 403 },
+      ),
+    )
+    .mockResolvedValueOnce(new Response(JSON.stringify({ status: "saved" })));
+  vi.stubGlobal("fetch", fetch);
+  await synchronize("worker", () => {});
+  expect((await local.rows.get(id))?.state).toBe("failed");
+  await synchronize("worker", () => {}, undefined, true);
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(await local.rows.get(id)).toBeUndefined();
+});
+
+test("old origin failures marked as conflicts recover without deleting the saved entry", async () => {
+  const id = crypto.randomUUID();
+  await seal(id, "queue", {
+    id,
+    org_id: crypto.randomUUID(),
+    action: "save_entry",
+    payload: {},
+  });
+  await local.rows.update(id, {
+    state: "conflict",
+    error: "FORBIDDEN: Invalid request origin",
+  });
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(new Response(JSON.stringify({ status: "saved" })));
+  vi.stubGlobal("fetch", fetch);
+  await synchronize("worker", () => {}, undefined, true);
+  expect(JSON.parse(fetch.mock.calls[0][1].body).id).toBe(id);
+  expect(await local.rows.get(id)).toBeUndefined();
+});
+
+test("permission denials still require review instead of automatic retries", async () => {
+  const id = crypto.randomUUID();
+  await seal(id, "queue", {
+    id,
+    org_id: crypto.randomUUID(),
+    action: "save_entry",
+    payload: {},
+  });
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(
+      new Response(JSON.stringify({ error: "FORBIDDEN" }), { status: 403 }),
+    );
+  vi.stubGlobal("fetch", fetch);
+  await synchronize("worker", () => {});
+  expect((await local.rows.get(id))?.state).toBe("conflict");
+  await synchronize("worker", () => {}, undefined, true);
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
 test("failed photograph does not show as backed up", async () => {
   const id = crypto.randomUUID();
   await seal(id, "photo", {

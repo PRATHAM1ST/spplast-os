@@ -59,5 +59,7 @@ export function sameOrigin(request: Request) {
       developmentHosts,
     )
   )
-    throw new Error("FORBIDDEN: Invalid request origin");
+    throw new Error(
+      "FORBIDDEN: Invalid request origin. Set APP_URL to the exact website address you opened, then restart or redeploy and press Sync now. Your entry is still saved on this device.",
+    );
 }

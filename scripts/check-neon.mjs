@@ -11,19 +11,43 @@ const required = [
 const missing = required.filter((k) => !process.env[k]);
 if (missing.length) {
   console.error(
-    `Unconfigured: ${missing.join(", ")}. Add values to .env.local. No connection attempted.`,
+    `Unconfigured: ${missing.join(", ")}. Save values in .env or .env.local in ${process.cwd()}. No connection attempted.`,
   );
   process.exit(1);
 }
 if (process.env.NEON_AUTH_COOKIE_SECRET.length < 32)
   throw new Error("NEON_AUTH_COOKIE_SECRET must have at least 32 characters");
-const sql = neon(process.env.DATABASE_URL);
 try {
+  let url;
+  try {
+    url = new URL(process.env.DATABASE_URL);
+  } catch {
+    throw new Error(
+      "DATABASE_URL must be a complete PostgreSQL connection URL",
+    );
+  }
+  if (!["postgres:", "postgresql:"].includes(url.protocol))
+    throw new Error("DATABASE_URL must use postgresql://");
+  if (url.username === "spplast_app")
+    throw new Error(
+      "spplast_app is a NOLOGIN permissions role. Use the login created by npm run db:provision-runtime.",
+    );
+  if (!url.username || !url.password)
+    throw new Error(
+      "DATABASE_URL needs both the runtime username and password",
+    );
+  const sql = neon(process.env.DATABASE_URL);
   const [role] =
     await sql`select rolname,rolsuper,rolbypassrls from pg_roles where rolname=current_user`;
   if (role.rolsuper || role.rolbypassrls)
     throw new Error(
       "Use a restricted runtime login without superuser/BYPASSRLS",
+    );
+  const [schema] =
+    await sql`select to_regclass('app.simple_entries') is not null as ready`;
+  if (!schema.ready)
+    throw new Error(
+      "The simple-entry schema is missing. Run npm run db:migrate with DATABASE_ADMIN_URL pointing to this same database and branch.",
     );
   const results = await sql.transaction([
     sql.query("set local role spplast_app", []),

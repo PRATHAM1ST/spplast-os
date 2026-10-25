@@ -34,6 +34,10 @@ export async function fetchJSON<T>(
 }
 export const retryDelay = (attempts: number) =>
   Math.min(300000, 1000 * 2 ** Math.min(attempts, 9));
+// Earlier versions held these as record conflicts. Keep the original command
+// and idempotency key so a corrected deployment can safely accept the retry.
+export const isOriginFailure = (message: string) =>
+  message.startsWith("FORBIDDEN: Invalid request origin");
 let running = false;
 export async function synchronize(
   user: string,
@@ -52,7 +56,10 @@ export async function synchronize(
       )
       .sortBy("order");
     for (const row of rows) {
-      if (row.state === "conflict" || (!force && row.retryAt > Date.now()))
+      if (
+        (row.state === "conflict" && !isOriginFailure(row.error)) ||
+        (!force && row.retryAt > Date.now())
+      )
         break;
       try {
         if (row.kind === "queue") {
@@ -119,7 +126,9 @@ export async function synchronize(
                 ? 422
                 : 0;
         const state: LocalRow["state"] =
-          status === 409 || status === 403 || status === 422
+          status === 409 ||
+          (status === 403 && !isOriginFailure(message)) ||
+          status === 422
             ? "conflict"
             : "failed";
         await local.rows.update(row.id, {
